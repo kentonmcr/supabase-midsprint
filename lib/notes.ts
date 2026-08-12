@@ -20,7 +20,7 @@ export async function listNotes(supabase: SupabaseClient): Promise<Note[]> {
 
 export async function createNote(
   supabase: SupabaseClient,
-  note: { title: string; body: string },
+  note: { title: string; body: string; collection_id: number | null },
 ): Promise<Note> {
   const { data, error } = await supabase
     .from("notes")
@@ -35,7 +35,7 @@ export async function createNote(
 export async function updateNote(
   supabase: SupabaseClient,
   id: number,
-  updates: { title: string; body: string },
+  updates: { title: string; body: string; collection_id: number | null },
 ): Promise<Note> {
   const { data, error } = await supabase
     .from("notes")
