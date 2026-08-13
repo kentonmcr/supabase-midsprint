@@ -57,13 +57,14 @@ export async function deleteCollection(
   if (error) throw error;
 }
 
-export async function shareCollection(
+async function setCollectionShareToken(
   supabase: SupabaseClient,
   id: number,
+  shareToken: string | null,
 ): Promise<Collection> {
   const { data, error } = await supabase
     .from("collections")
-    .update({ share_token: crypto.randomUUID() })
+    .update({ share_token: shareToken })
     .eq("id", id)
     .select()
     .single();
@@ -72,27 +73,36 @@ export async function shareCollection(
   return data;
 }
 
-export async function unshareCollection(
+export function shareCollection(
   supabase: SupabaseClient,
   id: number,
 ): Promise<Collection> {
-  const { data, error } = await supabase
-    .from("collections")
-    .update({ share_token: null })
-    .eq("id", id)
-    .select()
-    .single();
+  return setCollectionShareToken(supabase, id, crypto.randomUUID());
+}
 
-  if (error) throw error;
-  return data;
+export function unshareCollection(
+  supabase: SupabaseClient,
+  id: number,
+): Promise<Collection> {
+  return setCollectionShareToken(supabase, id, null);
 }
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export type SharedCollection = Pick<Collection, "id" | "name" | "created_at">;
+
 /**
  * Public lookup by share token — used by the unauthenticated /shared/[token]
- * route. Returns null rather than throwing when nothing matches (including
+ * route. Goes through the get_shared_collection() Postgres function (see
+ * CLAUDE.md) rather than a table-level RLS policy: a policy can only
+ * express "this row has *a* token", not "this row matches *the* token this
+ * request presented", so a direct anon SELECT against the table would leak
+ * every shared collection's name and token, not just the one this caller
+ * asked for. The function runs SECURITY DEFINER and does the token match
+ * itself, returning at most one row and never the token column.
+ *
+ * Returns null rather than throwing when nothing matches (including
  * malformed tokens, e.g. a mistyped URL), since "not found" is an expected
  * outcome here, not an error. share_token is a uuid column, and Postgres
  * throws a hard error on non-uuid input rather than just "no rows", so the
@@ -101,15 +111,13 @@ const UUID_PATTERN =
 export async function getCollectionByShareToken(
   supabase: SupabaseClient,
   token: string,
-): Promise<Collection | null> {
+): Promise<SharedCollection | null> {
   if (!UUID_PATTERN.test(token)) return null;
 
-  const { data, error } = await supabase
-    .from("collections")
-    .select("*")
-    .eq("share_token", token)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("get_shared_collection", {
+    p_token: token,
+  });
 
   if (error) throw error;
-  return data;
+  return data?.[0] ?? null;
 }

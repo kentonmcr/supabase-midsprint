@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCollectionByShareToken } from "@/lib/collections";
-import { listNotesByCollection } from "@/lib/notes";
+import { listSharedCollectionNotes } from "@/lib/notes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function SharedCollectionPage({
@@ -19,7 +19,7 @@ export default async function SharedCollectionPage({
     notFound();
   }
 
-  const notes = await listNotesByCollection(supabase, collection.id);
+  const notes = await listSharedCollectionNotes(supabase, token);
 
   return (
     <main className="min-h-screen flex flex-col items-center">

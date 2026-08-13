@@ -56,19 +56,29 @@ export async function deleteNote(
   if (error) throw error;
 }
 
+export type SharedNote = Pick<
+  Note,
+  "id" | "title" | "body" | "created_at" | "updated_at"
+>;
+
 /**
- * Notes for a single collection — used by the public /shared/[token]
- * page, which only ever needs one collection's notes, not the full table.
+ * Notes for a shared collection — used by the public /shared/[token] page.
+ * Goes through the get_shared_collection_notes() Postgres function rather
+ * than a table-level RLS policy, for the same reason as
+ * getCollectionByShareToken() in lib/collections.ts: a policy can only say
+ * "this note's collection has *a* token", not "...has *this* token", so a
+ * direct anon SELECT would leak every shared collection's notes at once.
+ * The token is assumed already validated by a prior
+ * getCollectionByShareToken() call — this is only ever reached once that's
+ * confirmed a real collection.
  */
-export async function listNotesByCollection(
+export async function listSharedCollectionNotes(
   supabase: SupabaseClient,
-  collectionId: number,
-): Promise<Note[]> {
-  const { data, error } = await supabase
-    .from("notes")
-    .select("*")
-    .eq("collection_id", collectionId)
-    .order("created_at", { ascending: false });
+  token: string,
+): Promise<SharedNote[]> {
+  const { data, error } = await supabase.rpc("get_shared_collection_notes", {
+    p_token: token,
+  });
 
   if (error) throw error;
   return data ?? [];

@@ -183,9 +183,13 @@ function CollectionRow({
   const handleCopyLink = async () => {
     if (!collection.share_token) return;
     const url = `${window.location.origin}/shared/${collection.share_token}`;
-    await navigator.clipboard.writeText(url);
-    setJustCopied(true);
-    setTimeout(() => setJustCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 2000);
+    } catch (err: unknown) {
+      alert(getErrorMessage(err));
+    }
   };
 
   if (isEditing) {
