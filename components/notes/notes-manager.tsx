@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import { createNote, updateNote, deleteNote, searchNoteIds } from "@/lib/notes";
@@ -78,22 +78,28 @@ export function NotesManager({
     null,
   );
   const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (trimmed === "") {
+      searchRequestIdRef.current += 1;
       setSearchMatchIds(null);
       setSearchError(null);
       return;
     }
 
-    const supabase = createClient();
     const timeoutId = setTimeout(async () => {
+      const requestId = ++searchRequestIdRef.current;
+      const supabase = createClient();
       try {
         const ids = await searchNoteIds(supabase, trimmed);
+        if (requestId !== searchRequestIdRef.current) return; // superseded by a newer search
         setSearchMatchIds(new Set(ids));
         setSearchError(null);
       } catch (err: unknown) {
+        if (requestId !== searchRequestIdRef.current) return;
+        setSearchMatchIds(new Set());
         setSearchError(getErrorMessage(err));
       }
     }, 300);
