@@ -8,6 +8,8 @@ import {
   createCollection,
   renameCollection,
   deleteCollection,
+  shareCollection,
+  unshareCollection,
 } from "@/lib/collections";
 import {
   createTag,
@@ -50,6 +52,10 @@ function getErrorMessage(err: unknown): string {
 
 function toggleId(ids: number[], id: number): number[] {
   return ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id];
+}
+
+function byName<T extends { name: string | null }>(a: T, b: T): number {
+  return (a.name ?? "").localeCompare(b.name ?? "");
 }
 
 export function NotesManager({
@@ -179,18 +185,14 @@ export function NotesManager({
   const handleCreateCollection = async (name: string) => {
     const supabase = createClient();
     const collection = await createCollection(supabase, { name });
-    setCollections((prev) =>
-      [...prev, collection].sort((a, b) => a.name.localeCompare(b.name)),
-    );
+    setCollections((prev) => [...prev, collection].sort(byName));
   };
 
   const handleRenameCollection = async (id: number, name: string) => {
     const supabase = createClient();
     const updated = await renameCollection(supabase, id, name);
     setCollections((prev) =>
-      prev
-        .map((c) => (c.id === id ? updated : c))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      prev.map((c) => (c.id === id ? updated : c)).sort(byName),
     );
   };
 
@@ -206,20 +208,28 @@ export function NotesManager({
     setSelectedCollectionId((prev) => (prev === id ? null : prev));
   };
 
+  const handleShareCollection = async (id: number) => {
+    const supabase = createClient();
+    const updated = await shareCollection(supabase, id);
+    setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  };
+
+  const handleUnshareCollection = async (id: number) => {
+    const supabase = createClient();
+    const updated = await unshareCollection(supabase, id);
+    setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  };
+
   const handleCreateTag = async (name: string) => {
     const supabase = createClient();
     const tag = await createTag(supabase, { name });
-    setTags((prev) => [...prev, tag].sort((a, b) => a.name.localeCompare(b.name)));
+    setTags((prev) => [...prev, tag].sort(byName));
   };
 
   const handleRenameTag = async (id: number, name: string) => {
     const supabase = createClient();
     const updated = await renameTag(supabase, id, name);
-    setTags((prev) =>
-      prev
-        .map((t) => (t.id === id ? updated : t))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    );
+    setTags((prev) => prev.map((t) => (t.id === id ? updated : t)).sort(byName));
   };
 
   const handleDeleteTag = async (id: number) => {
@@ -251,6 +261,8 @@ export function NotesManager({
           onCreate={handleCreateCollection}
           onRename={handleRenameCollection}
           onDelete={handleDeleteCollection}
+          onShare={handleShareCollection}
+          onUnshare={handleUnshareCollection}
         />
         <TagsSidebar
           tags={tags}

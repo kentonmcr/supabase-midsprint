@@ -57,6 +57,24 @@ export async function deleteNote(
 }
 
 /**
+ * Notes for a single collection — used by the public /shared/[token]
+ * page, which only ever needs one collection's notes, not the full table.
+ */
+export async function listNotesByCollection(
+  supabase: SupabaseClient,
+  collectionId: number,
+): Promise<Note[]> {
+  const { data, error } = await supabase
+    .from("notes")
+    .select("*")
+    .eq("collection_id", collectionId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
  * Full-text search against the generated `search_vector` column (title +
  * body, GIN-indexed). Runs in Postgres, not the browser — only the
  * matching ids come back, so the caller intersects them with whatever

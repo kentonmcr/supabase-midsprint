@@ -64,9 +64,10 @@ notes
   updated_at     timestamptz default now()
 
 collections
-  id          int8 pk identity
-  name        text
-  created_at  timestamptz default now()
+  id            int8 pk identity
+  name          text
+  share_token   uuid, nullable, no default — null means "not shared"
+  created_at    timestamptz default now()
 
 tags
   id          int8 pk identity
@@ -104,6 +105,15 @@ page load. This showed up as a spurious foreign-key violation when
 inserting a `note_tags` row referencing a tag id the browser still had
 cached from before the schema was being fiddled with. A hard refresh
 resolves it if this comes up again; it's not a code bug.
+
+**Retyping a column in the Table Editor can silently destroy its data.**
+While adding `share_token`, an existing text column got its name and type
+changed in place (rather than adding a new column alongside it), which
+dropped its data instead of casting it — the column came back empty
+(`NULL`) for every existing row rather than erroring. If a column's
+values look wrong or missing after an edit, re-check the table's full
+column list before assuming the data is still there; when adding a new
+field, always use "Add column," never repurpose an existing one.
 
 Every table gets the same RLS policy — since there's no owner column to
 scope by, the goal is just "must be logged in," not "must be the owner":
@@ -145,6 +155,59 @@ debounces the search box (~300ms), stores the result as a
 collection/tag filters the same way those already combine with each
 other. Search only matches `title`/`body` text — it does not match tag or
 collection names, by design (confirmed with user, not a bug).
+
+## Collection sharing (optional task)
+
+Any collection can be made publicly viewable, read-only, via a link —
+`collections.share_token` (nullable `uuid`) is `null` by default; setting
+it (via the Share button, `shareCollection()` in `lib/collections.ts`,
+which generates the token client-side with `crypto.randomUUID()`) makes
+the collection and its notes visible at `/shared/[token]` to anyone with
+the link, signed in or not. Unsharing sets it back to `null`.
+
+This required two things beyond the usual `authenticated`/`true`/`true`
+policy pattern, both added via SQL Editor since they need the `anon` role
+and (for notes) a cross-table subquery the Policies UI can't express:
+
+```sql
+create policy "Public can view shared collections"
+  on collections for select
+  to anon
+  using (share_token is not null);
+
+create policy "Public can view notes in shared collections"
+  on notes for select
+  to anon
+  using (
+    exists (
+      select 1 from collections c
+      where c.id = notes.collection_id
+        and c.share_token is not null
+    )
+  );
+```
+
+These **add** a narrow anonymous read path — Postgres OR's multiple
+policies for the same operation together, so the existing
+`authenticated`/`true`/`true` policies are untouched and signed-in users
+keep full access exactly as before.
+
+**`lib/supabase/proxy.ts` had to be updated too** — the starter's session
+middleware redirects any unauthenticated request to `/auth/login` unless
+the path starts with `/auth` or is `/`. Without excluding `/shared`, the
+public route would bounce every logged-out visitor straight to login,
+defeating the whole feature. The middleware's redirect condition now also
+excludes paths starting with `/shared`.
+
+`app/shared/[token]/page.tsx` is a Server Component with **no auth gate**
+(that's the point) — it looks up the collection by token via
+`getCollectionByShareToken()` (returns `null`, not an error, for
+not-found *or* malformed tokens — `share_token` is a `uuid` column and
+Postgres throws a hard error on non-uuid input rather than "no rows", so
+the token is regex-validated before it ever reaches the database), then
+calls `notFound()` if nothing matched. It only shows note title/body — no
+tag badges, no edit/delete controls, and no broader anon RLS grants on
+`tags`/`note_tags` were added, to keep the public read surface minimal.
 
 ## Conventions
 
