@@ -55,3 +55,25 @@ export async function deleteNote(
   const { error } = await supabase.from("notes").delete().eq("id", id);
   if (error) throw error;
 }
+
+/**
+ * Full-text search against the generated `search_vector` column (title +
+ * body, GIN-indexed). Runs in Postgres, not the browser — only the
+ * matching ids come back, so the caller intersects them with whatever
+ * notes it already has rather than re-fetching everything.
+ */
+export async function searchNoteIds(
+  supabase: SupabaseClient,
+  query: string,
+): Promise<number[]> {
+  const { data, error } = await supabase
+    .from("notes")
+    .select("id")
+    .textSearch("search_vector", query, {
+      type: "websearch",
+      config: "english",
+    });
+
+  if (error) throw error;
+  return (data ?? []).map((row: { id: number }) => row.id);
+}
