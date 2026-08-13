@@ -56,3 +56,68 @@ export async function deleteCollection(
   const { error } = await supabase.from("collections").delete().eq("id", id);
   if (error) throw error;
 }
+
+async function setCollectionShareToken(
+  supabase: SupabaseClient,
+  id: number,
+  shareToken: string | null,
+): Promise<Collection> {
+  const { data, error } = await supabase
+    .from("collections")
+    .update({ share_token: shareToken })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export function shareCollection(
+  supabase: SupabaseClient,
+  id: number,
+): Promise<Collection> {
+  return setCollectionShareToken(supabase, id, crypto.randomUUID());
+}
+
+export function unshareCollection(
+  supabase: SupabaseClient,
+  id: number,
+): Promise<Collection> {
+  return setCollectionShareToken(supabase, id, null);
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type SharedCollection = Pick<Collection, "id" | "name" | "created_at">;
+
+/**
+ * Public lookup by share token — used by the unauthenticated /shared/[token]
+ * route. Goes through the get_shared_collection() Postgres function (see
+ * CLAUDE.md) rather than a table-level RLS policy: a policy can only
+ * express "this row has *a* token", not "this row matches *the* token this
+ * request presented", so a direct anon SELECT against the table would leak
+ * every shared collection's name and token, not just the one this caller
+ * asked for. The function runs SECURITY DEFINER and does the token match
+ * itself, returning at most one row and never the token column.
+ *
+ * Returns null rather than throwing when nothing matches (including
+ * malformed tokens, e.g. a mistyped URL), since "not found" is an expected
+ * outcome here, not an error. share_token is a uuid column, and Postgres
+ * throws a hard error on non-uuid input rather than just "no rows", so the
+ * format is validated before it ever reaches the database.
+ */
+export async function getCollectionByShareToken(
+  supabase: SupabaseClient,
+  token: string,
+): Promise<SharedCollection | null> {
+  if (!UUID_PATTERN.test(token)) return null;
+
+  const { data, error } = await supabase.rpc("get_shared_collection", {
+    p_token: token,
+  });
+
+  if (error) throw error;
+  return data?.[0] ?? null;
+}

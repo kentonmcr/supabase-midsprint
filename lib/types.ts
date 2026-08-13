@@ -10,6 +10,7 @@ export interface Note {
 export interface Collection {
   id: number;
   name: string;
+  share_token: string | null;
   created_at: string;
 }
 
