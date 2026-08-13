@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
-import { createNote, updateNote, deleteNote } from "@/lib/notes";
+import { createNote, updateNote, deleteNote, searchNoteIds } from "@/lib/notes";
 import {
   createCollection,
   renameCollection,
@@ -74,6 +74,38 @@ export function NotesManager({
   >(null);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchIds, setSearchMatchIds] = useState<Set<number> | null>(
+    null,
+  );
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed === "") {
+      searchRequestIdRef.current += 1;
+      setSearchMatchIds(null);
+      setSearchError(null);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      const requestId = ++searchRequestIdRef.current;
+      const supabase = createClient();
+      try {
+        const ids = await searchNoteIds(supabase, trimmed);
+        if (requestId !== searchRequestIdRef.current) return; // superseded by a newer search
+        setSearchMatchIds(new Set(ids));
+        setSearchError(null);
+      } catch (err: unknown) {
+        if (requestId !== searchRequestIdRef.current) return;
+        setSearchMatchIds(new Set());
+        setSearchError(getErrorMessage(err));
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -198,8 +230,6 @@ export function NotesManager({
     setSelectedTagId((prev) => (prev === id ? null : prev));
   };
 
-  const trimmedQuery = searchQuery.trim().toLowerCase();
-
   const visibleNotes = notes
     .filter(
       (n) =>
@@ -209,12 +239,7 @@ export function NotesManager({
       (n) =>
         selectedTagId === null || getTagIdsForNote(n.id).includes(selectedTagId),
     )
-    .filter(
-      (n) =>
-        trimmedQuery === "" ||
-        n.title.toLowerCase().includes(trimmedQuery) ||
-        n.body.toLowerCase().includes(trimmedQuery),
-    );
+    .filter((n) => searchMatchIds === null || searchMatchIds.has(n.id));
 
   return (
     <div className="flex flex-col sm:flex-row gap-8">
@@ -318,13 +343,18 @@ export function NotesManager({
           </CardContent>
         </Card>
 
-        <Input
-          type="search"
-          placeholder="Search notes..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search notes"
-        />
+        <div className="flex flex-col gap-2">
+          <Input
+            type="search"
+            placeholder="Search notes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search notes"
+          />
+          {searchError && (
+            <p className="text-sm text-red-500">{searchError}</p>
+          )}
+        </div>
 
         <div className="flex flex-col gap-4">
           {visibleNotes.length === 0 && (
