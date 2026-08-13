@@ -118,6 +118,16 @@ RLS is still enabled on every table (so anonymous/logged-out requests are
 rejected outright); it just doesn't filter which rows an authenticated user
 can see.
 
+## Search
+
+Search is client-side only — `NotesManager` filters the already-loaded
+`notes` array by a case-insensitive substring match on `title`/`body`,
+combined via AND with the collection and tag filters. No new table,
+column, or `lib/` helper needed; it doesn't hit Supabase at all. This
+works because the app already loads the full notes list into memory (no
+per-user scoping, no pagination) — if that ever changes, search would need
+to move server-side.
+
 ## Conventions
 
 - Server Components by default; add `"use client"` only where interactivity

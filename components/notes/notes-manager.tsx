@@ -73,6 +73,7 @@ export function NotesManager({
     number | null
   >(null);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -197,6 +198,8 @@ export function NotesManager({
     setSelectedTagId((prev) => (prev === id ? null : prev));
   };
 
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+
   const visibleNotes = notes
     .filter(
       (n) =>
@@ -205,6 +208,12 @@ export function NotesManager({
     .filter(
       (n) =>
         selectedTagId === null || getTagIdsForNote(n.id).includes(selectedTagId),
+    )
+    .filter(
+      (n) =>
+        trimmedQuery === "" ||
+        n.title.toLowerCase().includes(trimmedQuery) ||
+        n.body.toLowerCase().includes(trimmedQuery),
     );
 
   return (
@@ -308,6 +317,14 @@ export function NotesManager({
             </form>
           </CardContent>
         </Card>
+
+        <Input
+          type="search"
+          placeholder="Search notes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search notes"
+        />
 
         <div className="flex flex-col gap-4">
           {visibleNotes.length === 0 && (
