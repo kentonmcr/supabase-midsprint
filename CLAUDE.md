@@ -56,11 +56,12 @@ Current tables:
 
 ```
 notes
-  id          int8 pk identity
-  title       text
-  body        text
-  created_at  timestamptz default now()
-  updated_at  timestamptz default now()
+  id             int8 pk identity
+  title          text
+  body           text
+  collection_id  int8 fk -> collections.id, nullable, on delete set null
+  created_at     timestamptz default now()
+  updated_at     timestamptz default now()
 
 collections
   id          int8 pk identity
@@ -68,8 +69,19 @@ collections
   created_at  timestamptz default now()
 ```
 
-Not built yet (later course steps — collections UI, tag system): `notes
-.collection_id` (nullable FK → `collections.id`), `tags` (id, name), and
+`notes.collection_id` deletes as `SET NULL`, not `CASCADE` — deleting a
+collection should orphan its notes (they become uncategorized), never
+delete them.
+
+**Table names must be lowercase.** Postgres/PostgREST is case-sensitive on
+unquoted-vs-quoted identifiers, and the Supabase Table Editor preserves
+whatever case you type. Naming a table `Collections` instead of
+`collections` causes `PGRST205: Could not find the table 'public
+.collections'` at runtime even though the table clearly exists — hit this
+once already when building collections. Double-check casing when adding
+`tags`/`note_tags`.
+
+Not built yet (later course steps — tag system): `tags` (id, name), and
 the `note_tags` join table (note_id FK, tag_id FK).
 
 Every table gets the same RLS policy — since there's no owner column to
