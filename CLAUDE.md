@@ -67,22 +67,43 @@ collections
   id          int8 pk identity
   name        text
   created_at  timestamptz default now()
+
+tags
+  id          int8 pk identity
+  name        text
+  created_at  timestamptz default now()
+
+note_tags
+  id          int8 pk identity
+  note_id     int8 fk -> notes.id, not null, on delete cascade
+  tag_id      int8 fk -> tags.id, not null, on delete cascade
+  created_at  timestamptz default now()
 ```
 
 `notes.collection_id` deletes as `SET NULL`, not `CASCADE` — deleting a
 collection should orphan its notes (they become uncategorized), never
-delete them.
+delete them. `note_tags` rows delete as `CASCADE` on both sides — a join
+row is meaningless once either the note or the tag it links is gone, so
+there's nothing to preserve (unlike `collection_id`, there's no "keep the
+row, blank the reference" case here).
 
-**Table names must be lowercase.** Postgres/PostgREST is case-sensitive on
-unquoted-vs-quoted identifiers, and the Supabase Table Editor preserves
-whatever case you type. Naming a table `Collections` instead of
-`collections` causes `PGRST205: Could not find the table 'public
-.collections'` at runtime even though the table clearly exists — hit this
-once already when building collections. Double-check casing when adding
-`tags`/`note_tags`.
+**Table and column names must be lowercase/exact.** Postgres/PostgREST is
+case-sensitive, and the Supabase Table Editor preserves whatever you type
+verbatim — no autocorrect. Hit two variants of this while building:
+naming a table `Collections` instead of `collections` caused `PGRST205:
+Could not find the table 'public.collections'`; naming `note_tags`
+columns `notes_id`/`tags_id` instead of `note_id`/`tag_id` caused `42703:
+column note_tags.note_id does not exist`. Both were fixed by renaming in
+the Table Editor after the fact. Double-check exact naming (including
+singular/plural) any time a new table/column gets added by hand.
 
-Not built yet (later course steps — tag system): `tags` (id, name), and
-the `note_tags` join table (note_id FK, tag_id FK).
+**Stale client state after manual DB edits.** If you edit table data
+directly in the Supabase dashboard while the app is open in a browser tab,
+that tab's React state won't know — it was seeded once from the initial
+page load. This showed up as a spurious foreign-key violation when
+inserting a `note_tags` row referencing a tag id the browser still had
+cached from before the schema was being fiddled with. A hard refresh
+resolves it if this comes up again; it's not a code bug.
 
 Every table gets the same RLS policy — since there's no owner column to
 scope by, the goal is just "must be logged in," not "must be the owner":

@@ -9,7 +9,13 @@ import {
   renameCollection,
   deleteCollection,
 } from "@/lib/collections";
-import type { Note, Collection } from "@/lib/types";
+import {
+  createTag,
+  renameTag,
+  deleteTag,
+  setNoteTags,
+} from "@/lib/tags";
+import type { Note, Collection, Tag, NoteTag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CollectionsSidebar } from "@/components/notes/collections-sidebar";
+import { TagsSidebar } from "@/components/notes/tags-sidebar";
 
 const NO_COLLECTION = "none";
 
@@ -40,25 +48,41 @@ function getErrorMessage(err: unknown): string {
   return "An unexpected error occurred";
 }
 
+function toggleId(ids: number[], id: number): number[] {
+  return ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id];
+}
+
 export function NotesManager({
   initialNotes,
   initialCollections,
+  initialTags,
+  initialNoteTags,
 }: {
   initialNotes: Note[];
   initialCollections: Collection[];
+  initialTags: Tag[];
+  initialNoteTags: NoteTag[];
 }) {
   const [notes, setNotes] = useState<Note[]>(initialNotes);
   const [collections, setCollections] =
     useState<Collection[]>(initialCollections);
+  const [tags, setTags] = useState<Tag[]>(initialTags);
+  const [noteTags, setNoteTagsState] = useState<NoteTag[]>(initialNoteTags);
+
   const [selectedCollectionId, setSelectedCollectionId] = useState<
     number | null
   >(null);
+  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
 
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [newNoteCollection, setNewNoteCollection] = useState(NO_COLLECTION);
+  const [newNoteTagIds, setNewNoteTagIds] = useState<number[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const getTagIdsForNote = (noteId: number) =>
+    noteTags.filter((nt) => nt.note_id === noteId).map((nt) => nt.tag_id);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,10 +99,16 @@ export function NotesManager({
             ? null
             : Number(newNoteCollection),
       });
+      await setNoteTags(supabase, note.id, newNoteTagIds);
       setNotes((prev) => [note, ...prev]);
+      setNoteTagsState((prev) => [
+        ...prev,
+        ...newNoteTagIds.map((tagId) => ({ note_id: note.id, tag_id: tagId })),
+      ]);
       setTitle("");
       setBody("");
       setNewNoteCollection(NO_COLLECTION);
+      setNewNoteTagIds([]);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
@@ -88,17 +118,29 @@ export function NotesManager({
 
   const handleSaveNote = async (
     id: number,
-    updates: { title: string; body: string; collection_id: number | null },
+    updates: {
+      title: string;
+      body: string;
+      collection_id: number | null;
+      tagIds: number[];
+    },
   ) => {
     const supabase = createClient();
-    const updated = await updateNote(supabase, id, updates);
+    const { tagIds, ...noteUpdates } = updates;
+    const updated = await updateNote(supabase, id, noteUpdates);
+    await setNoteTags(supabase, id, tagIds);
     setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+    setNoteTagsState((prev) => [
+      ...prev.filter((nt) => nt.note_id !== id),
+      ...tagIds.map((tagId) => ({ note_id: id, tag_id: tagId })),
+    ]);
   };
 
   const handleDeleteNote = async (id: number) => {
     const supabase = createClient();
     await deleteNote(supabase, id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
+    setNoteTagsState((prev) => prev.filter((nt) => nt.note_id !== id));
   };
 
   const handleCreateCollection = async (name: string) => {
@@ -131,21 +173,60 @@ export function NotesManager({
     setSelectedCollectionId((prev) => (prev === id ? null : prev));
   };
 
-  const visibleNotes =
-    selectedCollectionId === null
-      ? notes
-      : notes.filter((n) => n.collection_id === selectedCollectionId);
+  const handleCreateTag = async (name: string) => {
+    const supabase = createClient();
+    const tag = await createTag(supabase, { name });
+    setTags((prev) => [...prev, tag].sort((a, b) => a.name.localeCompare(b.name)));
+  };
+
+  const handleRenameTag = async (id: number, name: string) => {
+    const supabase = createClient();
+    const updated = await renameTag(supabase, id, name);
+    setTags((prev) =>
+      prev
+        .map((t) => (t.id === id ? updated : t))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  };
+
+  const handleDeleteTag = async (id: number) => {
+    const supabase = createClient();
+    await deleteTag(supabase, id);
+    setTags((prev) => prev.filter((t) => t.id !== id));
+    setNoteTagsState((prev) => prev.filter((nt) => nt.tag_id !== id));
+    setSelectedTagId((prev) => (prev === id ? null : prev));
+  };
+
+  const visibleNotes = notes
+    .filter(
+      (n) =>
+        selectedCollectionId === null || n.collection_id === selectedCollectionId,
+    )
+    .filter(
+      (n) =>
+        selectedTagId === null || getTagIdsForNote(n.id).includes(selectedTagId),
+    );
 
   return (
     <div className="flex flex-col sm:flex-row gap-8">
-      <CollectionsSidebar
-        collections={collections}
-        selectedId={selectedCollectionId}
-        onSelect={setSelectedCollectionId}
-        onCreate={handleCreateCollection}
-        onRename={handleRenameCollection}
-        onDelete={handleDeleteCollection}
-      />
+      <div className="flex flex-col gap-8 w-full sm:w-56 shrink-0">
+        <CollectionsSidebar
+          collections={collections}
+          selectedId={selectedCollectionId}
+          onSelect={setSelectedCollectionId}
+          onCreate={handleCreateCollection}
+          onRename={handleRenameCollection}
+          onDelete={handleDeleteCollection}
+        />
+        <TagsSidebar
+          tags={tags}
+          selectedId={selectedTagId}
+          onSelect={setSelectedTagId}
+          onCreate={handleCreateTag}
+          onRename={handleRenameTag}
+          onDelete={handleDeleteTag}
+        />
+      </div>
 
       <div className="flex-1 flex flex-col gap-8 min-w-0">
         <Card>
@@ -196,6 +277,30 @@ export function NotesManager({
                   </SelectContent>
                 </Select>
               </div>
+              {tags.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>Tags</Label>
+                  <div className="flex flex-col gap-2">
+                    {tags.map((tag) => (
+                      <div key={tag.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`new-tag-${tag.id}`}
+                          checked={newNoteTagIds.includes(tag.id)}
+                          onCheckedChange={() =>
+                            setNewNoteTagIds((prev) => toggleId(prev, tag.id))
+                          }
+                        />
+                        <Label
+                          htmlFor={`new-tag-${tag.id}`}
+                          className="font-normal"
+                        >
+                          {tag.name}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" disabled={isCreating}>
                 {isCreating ? "Adding..." : "Add note"}
@@ -207,9 +312,7 @@ export function NotesManager({
         <div className="flex flex-col gap-4">
           {visibleNotes.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              {selectedCollectionId === null
-                ? "No notes yet."
-                : "No notes in this collection."}
+              No notes match the current filters.
             </p>
           )}
           {visibleNotes.map((note) => (
@@ -217,6 +320,8 @@ export function NotesManager({
               key={note.id}
               note={note}
               collections={collections}
+              tags={tags}
+              noteTagIds={getTagIdsForNote(note.id)}
               onSave={handleSaveNote}
               onDelete={handleDeleteNote}
             />
@@ -230,14 +335,23 @@ export function NotesManager({
 function NoteRow({
   note,
   collections,
+  tags,
+  noteTagIds,
   onSave,
   onDelete,
 }: {
   note: Note;
   collections: Collection[];
+  tags: Tag[];
+  noteTagIds: number[];
   onSave: (
     id: number,
-    updates: { title: string; body: string; collection_id: number | null },
+    updates: {
+      title: string;
+      body: string;
+      collection_id: number | null;
+      tagIds: number[];
+    },
   ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }) {
@@ -247,6 +361,7 @@ function NoteRow({
   const [collectionValue, setCollectionValue] = useState(
     note.collection_id === null ? NO_COLLECTION : String(note.collection_id),
   );
+  const [tagIds, setTagIds] = useState<number[]>(noteTagIds);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +369,7 @@ function NoteRow({
   const collectionName = collections.find(
     (c) => c.id === note.collection_id,
   )?.name;
+  const noteTagNames = tags.filter((t) => noteTagIds.includes(t.id));
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -264,6 +380,7 @@ function NoteRow({
         body,
         collection_id:
           collectionValue === NO_COLLECTION ? null : Number(collectionValue),
+        tagIds,
       });
       setIsEditing(false);
     } catch (err: unknown) {
@@ -279,6 +396,7 @@ function NoteRow({
     setCollectionValue(
       note.collection_id === null ? NO_COLLECTION : String(note.collection_id),
     );
+    setTagIds(noteTagIds);
     setError(null);
     setIsEditing(false);
   };
@@ -318,6 +436,27 @@ function NoteRow({
               ))}
             </SelectContent>
           </Select>
+          {tags.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {tags.map((tag) => (
+                <div key={tag.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`note-${note.id}-tag-${tag.id}`}
+                    checked={tagIds.includes(tag.id)}
+                    onCheckedChange={() =>
+                      setTagIds((prev) => toggleId(prev, tag.id))
+                    }
+                  />
+                  <Label
+                    htmlFor={`note-${note.id}-tag-${tag.id}`}
+                    className="font-normal"
+                  >
+                    {tag.name}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          )}
           {error && <p className="text-sm text-red-500">{error}</p>}
           <div className="flex gap-2">
             <Button size="sm" onClick={handleSave} disabled={isSaving}>
@@ -341,7 +480,14 @@ function NoteRow({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <CardTitle className="text-base">{note.title}</CardTitle>
-        {collectionName && <Badge variant="secondary">{collectionName}</Badge>}
+        <div className="flex flex-wrap gap-1 justify-end">
+          {collectionName && <Badge variant="secondary">{collectionName}</Badge>}
+          {noteTagNames.map((tag) => (
+            <Badge key={tag.id} variant="outline">
+              {tag.name}
+            </Badge>
+          ))}
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="whitespace-pre-wrap text-sm">{note.body}</p>
