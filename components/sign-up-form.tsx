@@ -16,6 +16,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const PASSWORD_REQUIREMENTS_TEXT =
+  "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a digit, and a symbol.";
+
+function isPasswordValid(password: string): boolean {
+  return (
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /\d/.test(password) &&
+    /[^A-Za-z0-9]/.test(password)
+  );
+}
+
 export function SignUpForm({
   className,
   ...props
@@ -32,6 +45,12 @@ export function SignUpForm({
     const supabase = createClient();
     setIsLoading(true);
     setError(null);
+
+    if (!isPasswordValid(password)) {
+      setError(PASSWORD_REQUIREMENTS_TEXT);
+      setIsLoading(false);
+      return;
+    }
 
     if (password !== repeatPassword) {
       setError("Passwords do not match");
@@ -88,6 +107,9 @@ export function SignUpForm({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {PASSWORD_REQUIREMENTS_TEXT}
+                </p>
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">

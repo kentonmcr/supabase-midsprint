@@ -300,6 +300,14 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
   directly in the Supabase Dashboard's Google provider settings (not
   something this codebase configures) plus the `/auth/callback` redirect
   route above.
+- **Password requirements (sign-up only): at least 8 characters,
+  including an uppercase letter, a lowercase letter, a digit, and a
+  symbol.** Enforced client-side in `components/sign-up-form.tsx`
+  (`isPasswordValid()`) before `supabase.auth.signUp()` is ever called,
+  with the same text shown as a hint under the field and as the error
+  message if it fails — this is stricter than Supabase's own default
+  minimum (6 characters), so don't assume Supabase enforces this; the app
+  does.
 
 ## Conventions
 
