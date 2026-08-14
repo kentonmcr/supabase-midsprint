@@ -16,6 +16,13 @@ to explain in a walkthrough.
 
 - `app/` — routes. `app/auth/*` is the existing login/sign-up/password flow,
   `app/protected/*` is an example authenticated page.
+- `app/auth/confirm/route.ts` vs `app/auth/callback/route.ts` — two
+  different auth completion routes, don't conflate them. `confirm` handles
+  the OTP/magic-link flow (`token_hash` + `type` query params,
+  `supabase.auth.verifyOtp()`) used by email confirmation and password
+  reset. `callback` handles the OAuth PKCE flow (`code` query param,
+  `supabase.auth.exchangeCodeForSession()`) used by Google sign-in — add
+  any future OAuth provider's redirect here too, not a new route.
 - `lib/supabase/client.ts` — browser Supabase client (Client Components).
 - `lib/supabase/server.ts` — server Supabase client (Server Components,
   Route Handlers, Server Actions). Always create a fresh client per request —
@@ -256,6 +263,15 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
 - Auth gate: pages under `app/protected/` should redirect unauthenticated
   users via `supabase.auth.getClaims()` like `app/protected/page.tsx` and
   `app/protected/notes/page.tsx` do — don't invent a second auth pattern.
+- Sign-in methods: email/password (`signInWithPassword`, from the
+  original starter) and Google OAuth (`signInWithOAuth({ provider:
+  "google" })`, added later, `components/login-form.tsx`) both land the
+  user at `/protected` and are otherwise indistinguishable once signed
+  in — same session, same `auth.uid()`, no separate code paths anywhere
+  else in the app. Google requires a Client ID/Secret configured in the
+  Supabase Dashboard's Google provider settings (done by the user
+  directly, not something this codebase configures) and the redirect
+  route noted above.
 - Styling: Tailwind utility classes + existing shadcn `ui/` primitives.
   Match the existing minimal, unstyled-shadcn aesthetic rather than adding a
   new design system.
