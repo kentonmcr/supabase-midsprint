@@ -32,6 +32,14 @@ to explain in a walkthrough.
 - `components/` — shared UI; `components/ui/` is shadcn-generated, prefer
   adding new primitives via `npx shadcn@latest add <component>` over
   hand-rolling them.
+- `.agents/skills/` + `.claude/skills/` — two Supabase agent skills
+  (`supabase`, `supabase-postgres-best-practices`) installed via
+  `npx skills add supabase/agent-skills`, symlinked so Claude Code
+  registers them. Consult these — especially
+  `supabase-postgres-best-practices` — before schema/RLS/index changes;
+  the missing foreign-key indexes (see Data model) were only caught after
+  the fact because this wasn't properly wired in until partway through
+  the project.
 
 ## Environment
 
@@ -94,6 +102,26 @@ delete them. `note_tags` rows delete as `CASCADE` on both sides — a join
 row is meaningless once either the note or the tag it links is gone, so
 there's nothing to preserve (unlike `collection_id`, there's no "keep the
 row, blank the reference" case here).
+
+**Every foreign key column has an explicit index** — Postgres indexes
+primary keys automatically but never foreign keys, so this doesn't happen
+for free (flagged by the `supabase-postgres-best-practices` skill's
+`schema-foreign-key-indexes` rule, added after the fact once the skill
+was properly installed — see below):
+
+```sql
+create index notes_collection_id_idx on notes (collection_id);
+create index note_tags_note_id_idx on note_tags (note_id);
+create index note_tags_tag_id_idx on note_tags (tag_id);
+```
+
+`note_tags.note_id` matters most in practice: `setNoteTags()` in
+`lib/tags.ts` runs `delete from note_tags where note_id = ...` on every
+note create/edit, one of the most frequently-run queries in the app. The
+other two speed up `ON DELETE SET NULL`/`CASCADE` (finding dependent rows
+when a collection/tag is deleted). Add an index for any future foreign
+key column the same way — don't rely on the primary key's automatic
+index covering it.
 
 **Table and column names must be lowercase/exact.** Postgres/PostgREST is
 case-sensitive, and the Supabase Table Editor preserves whatever you type
