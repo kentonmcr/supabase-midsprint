@@ -244,6 +244,35 @@ calls `notFound()` if nothing matched. It only shows note title/body — no
 tag badges, no edit/delete controls, and no broader anon RLS grants on
 `tags`/`note_tags` were added, to keep the public read surface minimal.
 
+## Authentication rules
+
+- **Use Supabase Auth for all sign-in and session handling — never build
+  custom auth or store passwords.** Email/password
+  (`signInWithPassword`) and Google OAuth (`signInWithOAuth({ provider:
+  "google" })`) are the only two sign-in paths in this app, both fully
+  handled by Supabase; there is no separate account/password system
+  anywhere in this codebase.
+- **Every page under `app/protected/` requires a signed-in user,
+  verified on the server before the page loads** — via
+  `supabase.auth.getClaims()` (or `getUser()`), which makes a real
+  server-side call to validate the session. Never `getSession()` alone:
+  it only reads the cookie without verifying it, so it is not
+  trustworthy for gating access. See `app/protected/page.tsx` and
+  `app/protected/notes/page.tsx` for the pattern; don't invent a second
+  one. Redirect to `/auth/login` if the user is not signed in.
+- **After a successful sign-in, redirect to `/protected`.** Both
+  `components/login-form.tsx` (email/password and Google) and
+  `app/auth/callback/route.ts` (OAuth PKCE completion) already do this —
+  keep it consistent for any future sign-in path.
+- **After sign-out, redirect to `/auth/login`.**
+  `components/logout-button.tsx` already does this.
+- Email/password and Google OAuth are otherwise indistinguishable once
+  signed in — same session, same `auth.uid()`, no separate code paths
+  anywhere else in the app. Google requires a Client ID/Secret configured
+  directly in the Supabase Dashboard's Google provider settings (not
+  something this codebase configures) plus the `/auth/callback` redirect
+  route above.
+
 ## Conventions
 
 - Server Components by default; add `"use client"` only where interactivity
@@ -260,26 +289,6 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
   handler (see `components/login-form.tsx` and
   `components/notes/notes-manager.tsx`) — there is no Server Actions
   convention in this codebase, don't introduce one without reason.
-- Auth gate: pages under `app/protected/` should redirect unauthenticated
-  users via `supabase.auth.getClaims()` like `app/protected/page.tsx` and
-  `app/protected/notes/page.tsx` do — don't invent a second auth pattern.
-- **Every signed-in-only page must verify the user's session with the
-  Supabase Auth server before it loads, and redirect to the sign-in page
-  if the user is not signed in. Do not rely on the browser-side session
-  alone.** `getClaims()` (and `getUser()`) does this correctly — it makes
-  a real server-side call that validates the session. `getSession()`
-  does not — it just reads whatever's in the cookie/local storage without
-  verifying it, which is not trustworthy for gating access. Never gate a
-  protected page on `getSession()` alone.
-- Sign-in methods: email/password (`signInWithPassword`, from the
-  original starter) and Google OAuth (`signInWithOAuth({ provider:
-  "google" })`, added later, `components/login-form.tsx`) both land the
-  user at `/protected` and are otherwise indistinguishable once signed
-  in — same session, same `auth.uid()`, no separate code paths anywhere
-  else in the app. Google requires a Client ID/Secret configured in the
-  Supabase Dashboard's Google provider settings (done by the user
-  directly, not something this codebase configures) and the redirect
-  route noted above.
 - Styling: Tailwind utility classes + existing shadcn `ui/` primitives.
   Match the existing minimal, unstyled-shadcn aesthetic rather than adding a
   new design system.
