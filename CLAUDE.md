@@ -263,6 +263,14 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
 - Auth gate: pages under `app/protected/` should redirect unauthenticated
   users via `supabase.auth.getClaims()` like `app/protected/page.tsx` and
   `app/protected/notes/page.tsx` do — don't invent a second auth pattern.
+- **Every signed-in-only page must verify the user's session with the
+  Supabase Auth server before it loads, and redirect to the sign-in page
+  if the user is not signed in. Do not rely on the browser-side session
+  alone.** `getClaims()` (and `getUser()`) does this correctly — it makes
+  a real server-side call that validates the session. `getSession()`
+  does not — it just reads whatever's in the cookie/local storage without
+  verifying it, which is not trustworthy for gating access. Never gate a
+  protected page on `getSession()` alone.
 - Sign-in methods: email/password (`signInWithPassword`, from the
   original starter) and Google OAuth (`signInWithOAuth({ provider:
   "google" })`, added later, `components/login-form.tsx`) both land the
