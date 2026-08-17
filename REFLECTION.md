@@ -76,6 +76,25 @@ the full SQL) cleared the old shared-pool test data — it had no single
 rightful owner to assign it to — and added `user_id` + rewrote every RLS
 policy from "any authenticated user" to "owner only."
 
+**Verification caught a real isolation bug, not a hypothetical one.**
+Local verification with two dashboard-created test accounts (per this
+sprint's checklist) initially failed: account 2 could see account 1's
+notes. The migration's `drop policy if exists` calls had guessed the
+wrong existing policy names, so they silently no-opped instead of
+removing the old shared-pool policies — leaving the old `using (true)`
+policy active side-by-side with the new owner-only one on all four
+tables. Since Postgres OR's multiple permissive policies together, the
+old policy alone was enough to grant everyone access to everything,
+regardless of the new policy also being present. Found by checking each
+table's actual policy list in the dashboard (not by re-reading the
+migration SQL, which looked correct), fixed by deleting the leftover
+policy on all four tables, then re-verified with the same two accounts
+until isolation actually held in both directions. Full writeup in
+`CLAUDE.md`'s Data model section. This is exactly the kind of thing the
+"verify, don't assume" checklist is designed to catch — the SQL running
+without error was not sufficient evidence that it did what it was
+supposed to.
+
 ## Optional task
 
 <!-- filled in once finalized for this sprint -->

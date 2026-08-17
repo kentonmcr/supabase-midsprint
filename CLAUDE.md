@@ -189,6 +189,25 @@ per-user data. The `(select auth.uid())` wrapping, rather than a bare
 `auth.uid() = user_id`, is a Postgres RLS performance pattern — it lets
 Postgres evaluate the function once per query instead of once per row.
 
+**`drop policy if exists` with a guessed name fails silently — and it did,
+for real, on this exact migration.** The migration SQL used `drop policy
+if exists "Authenticated users can manage notes" on notes` (and similarly
+for the other three tables) before creating the new owner-only policy.
+The actual policy names on all four tables turned out to be
+`"Enable insert for authenticated users only"` (Supabase's own
+auto-suggested template name), not what was guessed — so every `drop`
+silently no-opped, and the old `using (true)` policy stayed active
+*alongside* the new owner-only one. Since Postgres OR's multiple
+permissive policies together for the same operation, the old
+all-access policy alone was enough to let every signed-in user see every
+other user's notes — confirmed live with two real test accounts, each
+seeing the other's data, before this was caught and fixed by manually
+deleting the leftover policy on all four tables. **Lesson: after running
+any `drop policy` (especially with a guessed name), go check the
+table's actual policy list in the dashboard and confirm only the
+intended policy remains — don't assume the drop worked just because the
+SQL ran without error.**
+
 RLS is enabled on every table, so both anonymous requests (no session)
 *and* other authenticated users' requests are rejected for rows they
 don't own. The only deliberate exception is the collection-sharing
