@@ -1,8 +1,10 @@
-# Notes App — Turing College "Building with AI Agents" Midsprint
+# Notes App — Turing College "Building with AI Agents"
 
-A notes app backed by Supabase, built on the official `with-supabase` Next.js
-starter. This is a course exercise — keep changes scoped, readable, and easy
-to explain in a walkthrough.
+A private, per-user notes app backed by Supabase, built on the official
+`with-supabase` Next.js starter. This is a course exercise (spanning a
+midsprint and a follow-on sprint) — keep changes scoped, readable, and
+easy to explain in a walkthrough. See `REFLECTION.md` for the reasoning
+behind key decisions, including the shared-pool → per-user schema pivot.
 
 ## Stack
 
@@ -55,73 +57,94 @@ Run `npm run dev` to start locally.
 
 ## Data model
 
-Built by hand in the Supabase Dashboard's Table Editor (not via SQL/CLI
-migrations), following the course's ER diagram: `collections` ─groups→
-`notes` ─labelled via→ `note_tags` ←applied via─ `tags`. Any future schema
-changes should be made the same way — through the Table Editor — until/
-unless a CLI migration workflow is introduced.
+Built by hand in the Supabase Dashboard's Table Editor/SQL Editor (not via
+CLI migrations), following the course's ER diagram: `collections`
+─groups→ `notes` ─labelled via→ `note_tags` ←applied via─ `tags`. IDs are
+`int8` (Supabase's default identity column), not UUID — `user_id` is the
+one exception, `uuid`, matching `auth.users.id`.
 
-Key decision: **no `user_id` anywhere.** This is intentionally a single
-shared pool of notes/collections/tags across every signed-in user, not
-per-user data — the diagram has no owner column, and that was confirmed
-deliberately rather than an oversight. IDs are `int8` (Supabase's default
-identity column), not UUID.
+**Every table is scoped to the signed-in user via `user_id`.** This is a
+private, per-user notes app — a user only ever sees their own data. This
+wasn't the original design: an earlier version of this project
+deliberately used a single shared pool with no owner column at all (that
+matched an earlier sprint's ER diagram exactly). A later sprint's explicit
+requirement — "a user sees only the notes they created" — reversed that
+decision. If you're reading old context/commits from before this point,
+disregard any mention of a shared/global pool; it no longer applies.
 
 Current tables:
 
 ```
 notes
   id             int8 pk identity
+  user_id        uuid fk -> auth.users.id, not null, default auth.uid(), on delete cascade
   title          text
   body           text
   collection_id  int8 fk -> collections.id, nullable, on delete set null
+  search_vector  generated tsvector (title weight A, body weight B), gin-indexed
   created_at     timestamptz default now()
   updated_at     timestamptz default now()
 
 collections
   id            int8 pk identity
+  user_id       uuid fk -> auth.users.id, not null, default auth.uid(), on delete cascade
   name          text
   share_token   uuid, nullable, no default — null means "not shared"
   created_at    timestamptz default now()
 
 tags
   id          int8 pk identity
+  user_id     uuid fk -> auth.users.id, not null, default auth.uid(), on delete cascade
   name        text
   created_at  timestamptz default now()
 
 note_tags
   id          int8 pk identity
+  user_id     uuid fk -> auth.users.id, not null, default auth.uid(), on delete cascade
   note_id     int8 fk -> notes.id, not null, on delete cascade
   tag_id      int8 fk -> tags.id, not null, on delete cascade
   created_at  timestamptz default now()
 ```
 
-`notes.collection_id` deletes as `SET NULL`, not `CASCADE` — deleting a
-collection should orphan its notes (they become uncategorized), never
-delete them. `note_tags` rows delete as `CASCADE` on both sides — a join
-row is meaningless once either the note or the tag it links is gone, so
-there's nothing to preserve (unlike `collection_id`, there's no "keep the
-row, blank the reference" case here).
+**`user_id default auth.uid()` means application code never sets it.**
+Every create function in `lib/notes.ts`, `lib/collections.ts`,
+`lib/tags.ts` (including the inserts inside `setNoteTags()`) omits
+`user_id` from its insert payload entirely — Postgres fills it in from
+whoever's authenticated session made the request. Combined with RLS
+(below) filtering every read automatically, this is why the entire
+per-user migration required **zero query changes** anywhere in `lib/*.ts`
+— only `lib/types.ts` needed `user_id` added to stay accurate. Don't
+add `.eq("user_id", ...)` filters to reads "to be safe" — RLS already
+guarantees it at the database level, and a redundant client-side filter
+just adds noise.
 
 **Every foreign key column has an explicit index** — Postgres indexes
 primary keys automatically but never foreign keys, so this doesn't happen
 for free (flagged by the `supabase-postgres-best-practices` skill's
-`schema-foreign-key-indexes` rule, added after the fact once the skill
-was properly installed — see below):
+`schema-foreign-key-indexes` rule):
 
 ```sql
 create index notes_collection_id_idx on notes (collection_id);
 create index note_tags_note_id_idx on note_tags (note_id);
 create index note_tags_tag_id_idx on note_tags (tag_id);
+create index notes_user_id_idx on notes (user_id);
+create index collections_user_id_idx on collections (user_id);
+create index tags_user_id_idx on tags (user_id);
+create index note_tags_user_id_idx on note_tags (user_id);
 ```
 
-`note_tags.note_id` matters most in practice: `setNoteTags()` in
-`lib/tags.ts` runs `delete from note_tags where note_id = ...` on every
-note create/edit, one of the most frequently-run queries in the app. The
-other two speed up `ON DELETE SET NULL`/`CASCADE` (finding dependent rows
-when a collection/tag is deleted). Add an index for any future foreign
-key column the same way — don't rely on the primary key's automatic
-index covering it.
+`user_id` matters most of all of these: every RLS policy (below) checks
+it on every single query against every table, not just occasional
+cascade/set-null operations. `note_tags.note_id` is next most important
+in practice: `setNoteTags()` runs `delete from note_tags where note_id =
+...` on every note create/edit.
+
+`notes.collection_id` deletes as `SET NULL`, not `CASCADE` — deleting a
+collection should orphan its notes (they become uncategorized), never
+delete them. `note_tags` rows delete as `CASCADE` on both sides — a join
+row is meaningless once either the note or the tag it links is gone.
+`user_id` also deletes as `CASCADE` on all four tables — deleting a user
+account should remove all of their data, not orphan it.
 
 **Table and column names must be lowercase/exact.** Postgres/PostgREST is
 case-sensitive, and the Supabase Table Editor preserves whatever you type
@@ -150,18 +173,27 @@ values look wrong or missing after an edit, re-check the table's full
 column list before assuming the data is still there; when adding a new
 field, always use "Add column," never repurpose an existing one.
 
-Every table gets the same RLS policy — since there's no owner column to
-scope by, the goal is just "must be logged in," not "must be the owner":
+**RLS policy: owner-only, not "any authenticated user."** Every table's
+policy checks that the row's `user_id` matches the caller's own id:
 
 ```sql
 -- FOR ALL, target role: authenticated
-using (true)
-with check (true)
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id)
 ```
 
-RLS is still enabled on every table (so anonymous/logged-out requests are
-rejected outright); it just doesn't filter which rows an authenticated user
-can see.
+This replaced an earlier, deliberately-shared-pool policy
+(`using (true) with check (true)`, no owner check at all — see the note
+at the top of this section) once a later sprint required private,
+per-user data. The `(select auth.uid())` wrapping, rather than a bare
+`auth.uid() = user_id`, is a Postgres RLS performance pattern — it lets
+Postgres evaluate the function once per query instead of once per row.
+
+RLS is enabled on every table, so both anonymous requests (no session)
+*and* other authenticated users' requests are rejected for rows they
+don't own. The only deliberate exception is the collection-sharing
+feature below, which punches one narrow, separate hole in this for
+public read access — everything else stays fully private per-user.
 
 ## Search
 
@@ -199,6 +231,12 @@ it (via the Share button, `shareCollection()` in `lib/collections.ts`,
 which generates the token client-side with `crypto.randomUUID()`) makes
 the collection and its notes visible at `/shared/[token]` to anyone with
 the link, signed in or not. Unsharing sets it back to `null`.
+
+This is unaffected by `collections`/`notes` now having `user_id` — a user
+can only ever share/unshare their *own* collection (RLS still governs the
+authenticated Share/Unshare actions), and the public read path below
+bypasses RLS entirely via `SECURITY DEFINER`, so it never needed to know
+about ownership in the first place.
 
 **Not implemented as RLS policies on the tables** — an earlier version of
 this did `to anon using (share_token is not null)`, but that's the wrong
@@ -308,6 +346,20 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
   message if it fails — this is stricter than Supabase's own default
   minimum (6 characters), so don't assume Supabase enforces this; the app
   does.
+- **The `service_role`/secret key must never be placed in a client-
+  accessible env var, and never sent to the browser.** In Next.js, any
+  env var prefixed `NEXT_PUBLIC_` is bundled into client-side JS and
+  therefore public — that's exactly why this project only ever uses
+  `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+  (see Environment below), both safe-to-expose keys, everywhere,
+  including in `lib/supabase/server.ts`. There is currently no
+  `service_role` key anywhere in this project — no `.env.local` entry, no
+  code reference — and none of this app's features (including the
+  `SECURITY DEFINER` functions used for collection sharing) require one.
+  If a future feature seems to need elevated/service-role privileges,
+  that's a signal to re-examine the design (e.g. a narrower
+  `SECURITY DEFINER` function, as done for sharing) rather than reach for
+  the service-role key in application code.
 
 ## Conventions
 
