@@ -17,6 +17,11 @@ import {
   deleteTag,
   setNoteTags,
 } from "@/lib/tags";
+import {
+  uploadNoteImage,
+  deleteNoteImage,
+  getNoteImageSignedUrl,
+} from "@/lib/storage";
 import type { Note, Collection, Tag, NoteTag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +61,14 @@ function toggleId(ids: number[], id: number): number[] {
 
 function byName<T extends { name: string | null }>(a: T, b: T): number {
   return (a.name ?? "").localeCompare(b.name ?? "");
+}
+
+async function getCurrentUserId(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string> {
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data?.claims) throw new Error("Not signed in");
+  return data.claims.sub as string;
 }
 
 export function NotesManager({
@@ -117,6 +130,7 @@ export function NotesManager({
   const [body, setBody] = useState("");
   const [newNoteCollection, setNewNoteCollection] = useState(NO_COLLECTION);
   const [newNoteTagIds, setNewNoteTagIds] = useState<number[]>([]);
+  const [newNoteImageFile, setNewNoteImageFile] = useState<File | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +144,12 @@ export function NotesManager({
     setError(null);
 
     try {
+      let image_path: string | null = null;
+      if (newNoteImageFile) {
+        const userId = await getCurrentUserId(supabase);
+        image_path = await uploadNoteImage(supabase, userId, newNoteImageFile);
+      }
+
       const note = await createNote(supabase, {
         title,
         body,
@@ -137,6 +157,7 @@ export function NotesManager({
           newNoteCollection === NO_COLLECTION
             ? null
             : Number(newNoteCollection),
+        image_path,
       });
       await setNoteTags(supabase, note.id, newNoteTagIds);
       setNotes((prev) => [note, ...prev]);
@@ -148,6 +169,7 @@ export function NotesManager({
       setBody("");
       setNewNoteCollection(NO_COLLECTION);
       setNewNoteTagIds([]);
+      setNewNoteImageFile(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
@@ -162,11 +184,31 @@ export function NotesManager({
       body: string;
       collection_id: number | null;
       tagIds: number[];
+      imageFile: File | null;
+      removeImage: boolean;
     },
   ) => {
     const supabase = createClient();
-    const { tagIds, ...noteUpdates } = updates;
-    const updated = await updateNote(supabase, id, noteUpdates);
+    const { tagIds, imageFile, removeImage, ...noteUpdates } = updates;
+    const existing = notes.find((n) => n.id === id);
+    let image_path = existing?.image_path ?? null;
+
+    if (imageFile) {
+      const userId = await getCurrentUserId(supabase);
+      const newPath = await uploadNoteImage(supabase, userId, imageFile);
+      if (image_path) {
+        await deleteNoteImage(supabase, image_path).catch(() => {});
+      }
+      image_path = newPath;
+    } else if (removeImage && image_path) {
+      await deleteNoteImage(supabase, image_path).catch(() => {});
+      image_path = null;
+    }
+
+    const updated = await updateNote(supabase, id, {
+      ...noteUpdates,
+      image_path,
+    });
     await setNoteTags(supabase, id, tagIds);
     setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
     setNoteTagsState((prev) => [
@@ -177,7 +219,11 @@ export function NotesManager({
 
   const handleDeleteNote = async (id: number) => {
     const supabase = createClient();
+    const existing = notes.find((n) => n.id === id);
     await deleteNote(supabase, id);
+    if (existing?.image_path) {
+      await deleteNoteImage(supabase, existing.image_path).catch(() => {});
+    }
     setNotes((prev) => prev.filter((n) => n.id !== id));
     setNoteTagsState((prev) => prev.filter((nt) => nt.note_id !== id));
   };
@@ -347,6 +393,17 @@ export function NotesManager({
                   </div>
                 </div>
               )}
+              <div className="grid gap-2">
+                <Label htmlFor="image">Image (optional)</Label>
+                <Input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setNewNoteImageFile(e.target.files?.[0] ?? null)
+                  }
+                />
+              </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" disabled={isCreating}>
                 {isCreating ? "Adding..." : "Add note"}
@@ -391,6 +448,32 @@ export function NotesManager({
   );
 }
 
+function NoteImage({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    getNoteImageSignedUrl(supabase, path)
+      .then((signedUrl) => {
+        if (!cancelled) setUrl(signedUrl);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(getErrorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (error) return <p className="text-sm text-red-500">{error}</p>;
+  if (!url) return null;
+
+  // eslint-disable-next-line @next/next/no-img-element -- signed URL, not an optimizable static asset
+  return <img src={url} alt="" className="rounded-md max-h-64 w-auto" />;
+}
+
 function NoteRow({
   note,
   collections,
@@ -410,6 +493,8 @@ function NoteRow({
       body: string;
       collection_id: number | null;
       tagIds: number[];
+      imageFile: File | null;
+      removeImage: boolean;
     },
   ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -421,6 +506,8 @@ function NoteRow({
     note.collection_id === null ? NO_COLLECTION : String(note.collection_id),
   );
   const [tagIds, setTagIds] = useState<number[]>(noteTagIds);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -440,6 +527,8 @@ function NoteRow({
         collection_id:
           collectionValue === NO_COLLECTION ? null : Number(collectionValue),
         tagIds,
+        imageFile,
+        removeImage,
       });
       setIsEditing(false);
     } catch (err: unknown) {
@@ -456,6 +545,8 @@ function NoteRow({
       note.collection_id === null ? NO_COLLECTION : String(note.collection_id),
     );
     setTagIds(noteTagIds);
+    setImageFile(null);
+    setRemoveImage(false);
     setError(null);
     setIsEditing(false);
   };
@@ -516,6 +607,31 @@ function NoteRow({
               ))}
             </div>
           )}
+          <div className="grid gap-2">
+            <Label htmlFor={`note-${note.id}-image`}>Image</Label>
+            {note.image_path && !removeImage && !imageFile && (
+              <div className="flex items-center gap-2">
+                <NoteImage path={note.image_path} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRemoveImage(true)}
+                >
+                  Remove image
+                </Button>
+              </div>
+            )}
+            <Input
+              id={`note-${note.id}-image`}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                setImageFile(e.target.files?.[0] ?? null);
+                setRemoveImage(false);
+              }}
+            />
+          </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
           <div className="flex gap-2">
             <Button size="sm" onClick={handleSave} disabled={isSaving}>
@@ -550,6 +666,7 @@ function NoteRow({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="whitespace-pre-wrap text-sm">{note.body}</p>
+        {note.image_path && <NoteImage path={note.image_path} />}
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex gap-2">
           <Button

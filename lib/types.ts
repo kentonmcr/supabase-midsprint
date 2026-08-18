@@ -4,6 +4,7 @@ export interface Note {
   title: string;
   body: string;
   collection_id: number | null;
+  image_path: string | null;
   created_at: string;
   updated_at: string;
 }
