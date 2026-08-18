@@ -22,8 +22,7 @@ else. See `CLAUDE.md` for the full architecture and conventions, and
 
 ## Screenshot
 
-_TODO: add a screenshot of the app running locally (signed in, viewing
-the notes workspace) here._
+![Notes app running locally, signed in, showing the collections/tags sidebar and the new-note form](docs/screenshot.png)
 
 ## Running locally
 
