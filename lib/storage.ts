@@ -16,7 +16,8 @@ export async function uploadNoteImage(
   userId: string,
   file: File,
 ): Promise<string> {
-  const ext = file.name.split(".").pop() ?? "bin";
+  const dotIndex = file.name.lastIndexOf(".");
+  const ext = dotIndex === -1 ? "bin" : file.name.slice(dotIndex + 1);
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, file);

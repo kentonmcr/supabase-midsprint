@@ -150,15 +150,25 @@ export function NotesManager({
         image_path = await uploadNoteImage(supabase, userId, newNoteImageFile);
       }
 
-      const note = await createNote(supabase, {
-        title,
-        body,
-        collection_id:
-          newNoteCollection === NO_COLLECTION
-            ? null
-            : Number(newNoteCollection),
-        image_path,
-      });
+      let note;
+      try {
+        note = await createNote(supabase, {
+          title,
+          body,
+          collection_id:
+            newNoteCollection === NO_COLLECTION
+              ? null
+              : Number(newNoteCollection),
+          image_path,
+        });
+      } catch (err: unknown) {
+        // The note row was never created, so the freshly uploaded image
+        // would otherwise be orphaned in Storage forever.
+        if (image_path) {
+          await deleteNoteImage(supabase, image_path).catch(() => {});
+        }
+        throw err;
+      }
       await setNoteTags(supabase, note.id, newNoteTagIds);
       setNotes((prev) => [note, ...prev]);
       setNoteTagsState((prev) => [
@@ -191,24 +201,28 @@ export function NotesManager({
     const supabase = createClient();
     const { tagIds, imageFile, removeImage, ...noteUpdates } = updates;
     const existing = notes.find((n) => n.id === id);
-    let image_path = existing?.image_path ?? null;
+    const oldImagePath = existing?.image_path ?? null;
+    let newImagePath = oldImagePath;
 
     if (imageFile) {
       const userId = await getCurrentUserId(supabase);
-      const newPath = await uploadNoteImage(supabase, userId, imageFile);
-      if (image_path) {
-        await deleteNoteImage(supabase, image_path).catch(() => {});
-      }
-      image_path = newPath;
-    } else if (removeImage && image_path) {
-      await deleteNoteImage(supabase, image_path).catch(() => {});
-      image_path = null;
+      newImagePath = await uploadNoteImage(supabase, userId, imageFile);
+    } else if (removeImage) {
+      newImagePath = null;
     }
 
+    // Update the DB row (the source of truth) before touching the old
+    // Storage object — if this throws, the note still correctly points at
+    // whatever image actually still exists, nothing is left broken.
     const updated = await updateNote(supabase, id, {
       ...noteUpdates,
-      image_path,
+      image_path: newImagePath,
     });
+
+    if (oldImagePath && oldImagePath !== newImagePath) {
+      await deleteNoteImage(supabase, oldImagePath).catch(() => {});
+    }
+
     await setNoteTags(supabase, id, tagIds);
     setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
     setNoteTagsState((prev) => [
@@ -530,6 +544,8 @@ function NoteRow({
         imageFile,
         removeImage,
       });
+      setImageFile(null);
+      setRemoveImage(false);
       setIsEditing(false);
     } catch (err: unknown) {
       setError(getErrorMessage(err));

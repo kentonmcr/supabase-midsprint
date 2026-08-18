@@ -97,8 +97,52 @@ supposed to.
 
 ## Optional task
 
-<!-- filled in once finalized for this sprint -->
+**Image uploads (Hard tier)** — via Supabase Storage, delivered on its
+own branch (`feature/image-uploads`) and [PR #3](https://github.com/kentonmcr/supabase-midsprint/pull/3).
+A note can have one attached image; the file lives in a private
+`note-images` Storage bucket (never public, never base64 in the
+database), with access scoped per-user by Storage RLS policies keyed on
+the upload path's first folder segment (`<user_id>/...`) — the same
+ownership pattern as every table this sprint, just expressed through a
+file path instead of a `user_id` column, since `storage.objects` is
+Supabase's own table. Display goes through a signed URL (1-hour expiry),
+fetched client-side, not cached. Full detail in `CLAUDE.md`'s "Image
+uploads" section.
 
 ## Fresh-session PR review
 
-<!-- filled in once the fresh-session /code-review pass is done -->
+Ran `/code-review` against [PR #3](https://github.com/kentonmcr/supabase-midsprint/pull/3)
+(the image-uploads PR) as an independent background subagent invocation
+— a fresh context with no memory of the conversation that wrote the code,
+the closest practical equivalent to a genuinely separate session. Four
+real findings, all fixed before merging:
+
+1. **Wrong operation order on image replace/remove** — the old Storage
+   file was deleted *before* `updateNote()` persisted the new
+   `image_path`. If the DB update failed after the Storage delete
+   succeeded, the note's row was left pointing at an image that no
+   longer existed, with no way to recover. Fixed by reordering: update
+   the DB row first (the source of truth), only clean up the old Storage
+   object after that succeeds.
+2. **Create-failure path could orphan a Storage file** — if a user
+   picked an image and `createNote()` then failed, the already-uploaded
+   image had no note to attach to and was never cleaned up, contradicting
+   this PR's own "old images aren't left orphaned" claim for every other
+   flow. Fixed by wrapping `createNote()` in its own try/catch that
+   deletes the just-uploaded file before re-throwing.
+3. **Stale image-edit state carried into the next edit session** — unlike
+   `handleCancel`, a successful `handleSave` never reset `imageFile`/
+   `removeImage`. Reopening Edit on the same note (without touching the
+   image) would silently re-upload the same file as a new object and
+   delete the one just saved. Fixed by resetting both on success, same as
+   cancel already did.
+4. **Dead fallback in the file-extension parser** — `file.name.split(".")
+   .pop() ?? "bin"` can never actually hit `?? "bin"`, since `.pop()` on
+   a non-empty split always returns a string. A file with no extension
+   (e.g. `"photo"`) got that whole filename used as the extension instead
+   of the intended `.bin` fallback. Fixed with an explicit
+   `lastIndexOf(".")` check.
+
+None of these were visible from manually testing the happy path — all
+four are failure-path or repeated-interaction bugs, exactly the kind of
+thing a second, fresh set of eyes on the diff is for.
