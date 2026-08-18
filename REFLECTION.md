@@ -109,6 +109,18 @@ Supabase's own table. Display goes through a signed URL (1-hour expiry),
 fetched client-side, not cached. Full detail in `CLAUDE.md`'s "Image
 uploads" section.
 
+**Bonus: Loading states (Easy tier)** — `app/protected/notes/loading.tsx`,
+using Next.js App Router's built-in loading-file convention rather than a
+hand-rolled client-side fetch/spinner: Next.js automatically wraps the
+route in a Suspense boundary and shows this file as the fallback while
+the page's server-side data fetch is in flight. Delivered via its own
+branch and PR directly in this submission repo —
+[PR #1](https://github.com/TuringCollegeSubmissions/kmcrue-BAI.2.8/pull/1) —
+to make sure the "at least one merged pull request" requirement is
+unambiguously satisfied *in this specific repo*, not just carried over
+as commit history from the separate repo the rest of this project was
+built in ([kentonmcr/supabase-midsprint](https://github.com/kentonmcr/supabase-midsprint)).
+
 ## Fresh-session PR review
 
 Ran `/code-review` against [PR #3](https://github.com/kentonmcr/supabase-midsprint/pull/3)
