@@ -319,7 +319,7 @@ shape: RLS can express "this row has *a* token," not "this row matches
 every shared collection at once, handing out every collection's name and
 live share token in one request — turning "share via unguessable link"
 into "query the anon REST API and get every token." Caught via
-`/code-review` on the PR diff (see `docs/reflections.md`).
+`/code-review` on the PR diff (see `docs/reflections-midsprint.md`).
 
 Fixed by routing the public read path through two `SECURITY DEFINER`
 Postgres functions instead, added via SQL Editor — no direct anon grants
