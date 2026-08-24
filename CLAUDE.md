@@ -159,6 +159,14 @@ referenced here so they load as needed rather than bloating this file:
   Match the existing minimal, unstyled-shadcn aesthetic rather than adding a
   new design system.
 - Don't commit `.env.local` or any real Supabase keys.
+- **Don't start, stop, or kill background processes (dev servers, etc.)
+  without first checking whether one is already running, and confirming
+  before touching it.** A subagent-orchestrating session once killed a
+  `next dev` process it hadn't started, mid-task, without checking first
+  — the process belonged to a terminal tab the user controlled directly,
+  not to any agent session. If a dev server is needed, check for one
+  first; if one exists that you didn't start, leave it alone and ask
+  before touching it.
 
 ## Commands
 
