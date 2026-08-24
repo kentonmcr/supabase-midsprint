@@ -259,6 +259,11 @@ page's shape (sidebar + note cards) so the transition doesn't jump
 around. Hard to see locally since Supabase responds fast enough that it
 flashes by quickly — that's expected, not a sign it isn't working.
 
+**`app/protected/notes/error.tsx`** — matching error-boundary convention
+for the same segment: `lib/*.ts` functions throw Supabase's raw error
+object on failure, so this catches that and shows a "Try again" button
+instead of a crash.
+
 ## Image uploads (optional task)
 
 A note can have one attached image, stored in Supabase Storage — **not**
