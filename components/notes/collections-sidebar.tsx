@@ -6,15 +6,7 @@ import type { Collection } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "message" in err) {
-    return String((err as { message: unknown }).message);
-  }
-  return "An unexpected error occurred";
-}
+import { cn, getErrorMessage } from "@/lib/utils";
 
 export function CollectionsSidebar({
   collections,
