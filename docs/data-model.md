@@ -133,6 +133,30 @@ per-user data. The `(select auth.uid())` wrapping, rather than a bare
 `auth.uid() = user_id`, is a Postgres RLS performance pattern — it lets
 Postgres evaluate the function once per query instead of once per row.
 
+**`note_tags` needs a stronger check than the other three tables.**
+`note_tags.user_id = auth.uid()` alone only proves the *join row* belongs
+to the caller — it says nothing about whether the `note_id`/`tag_id` it
+references actually belong to that same caller. A security audit
+(`security-auditor` subagent) caught that `setNoteTags()` in `lib/tags.ts`
+never verified this either, before inserting. Since `note_id`/`tag_id`
+are plain sequential integers, a caller could otherwise link their own
+tag to another user's note (or vice versa) by guessing an id. Fixed by
+adding `not null` to both columns (they were nullable despite being
+documented as `not null` — another drift instance) and extending the
+`note_tags` policy's `with check` to also require the referenced rows be
+owned by the caller:
+
+```sql
+with check (
+  (select auth.uid()) = user_id
+  and exists (select 1 from notes where notes.id = note_id and notes.user_id = (select auth.uid()))
+  and exists (select 1 from tags where tags.id = tag_id and tags.user_id = (select auth.uid()))
+)
+```
+
+`using` is unchanged — this only tightens what values a write is allowed
+to set, not which existing rows are visible.
+
 **`drop policy if exists` with a guessed name fails silently — and it did,
 for real, on this exact migration.** The migration SQL used `drop policy
 if exists "Authenticated users can manage notes" on notes` (and similarly

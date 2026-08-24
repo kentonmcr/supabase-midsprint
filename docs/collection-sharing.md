@@ -63,8 +63,8 @@ grant execute on function get_shared_collection_notes(uuid) to anon;
 `lib/collections.ts`'s `getCollectionByShareToken()` and
 `lib/notes.ts`'s `listSharedCollectionNotes()` call these via
 `supabase.rpc(...)` rather than `.from(...).select(...)`. The existing
-`authenticated`/`true`/`true` table policies are untouched by any of
-this — signed-in users' access is unaffected.
+owner-scoped table policies (see `docs/data-model.md`) are untouched by
+any of this — signed-in users' access is unaffected.
 
 **`lib/supabase/proxy.ts` had to be updated too** — the starter's session
 middleware redirects any unauthenticated request to `/auth/login` unless
