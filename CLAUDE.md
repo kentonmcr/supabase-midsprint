@@ -113,14 +113,17 @@ referenced here so they load as needed rather than bloating this file:
   directly in the Supabase Dashboard's Google provider settings (not
   something this codebase configures) plus the `/auth/callback` redirect
   route above.
-- **Password requirements (sign-up only): at least 8 characters,
-  including an uppercase letter, a lowercase letter, a digit, and a
-  symbol.** Enforced client-side in `components/sign-up-form.tsx`
-  (`isPasswordValid()`) before `supabase.auth.signUp()` is ever called,
-  with the same text shown as a hint under the field and as the error
-  message if it fails — this is stricter than Supabase's own default
-  minimum (6 characters), so don't assume Supabase enforces this; the app
-  does.
+- **Password requirements: at least 8 characters, including an
+  uppercase letter, a lowercase letter, a digit, and a symbol.**
+  Enforced in two places, deliberately kept in sync: client-side in
+  `components/sign-up-form.tsx` (`isPasswordValid()`, checked before
+  `supabase.auth.signUp()` is ever called, so the error shows instantly
+  without a round trip) and server-side via the same minimum
+  length/character-type settings in the Supabase Dashboard
+  (Authentication → Sign In / Providers → Email), which rejects
+  non-conforming passwords on every sign-up and password change
+  regardless of client. If either side's rule changes, update the
+  other to match.
 - **The `service_role`/secret key must never be placed in a client-
   accessible env var, and never sent to the browser.** In Next.js, any
   env var prefixed `NEXT_PUBLIC_` is bundled into client-side JS and

@@ -149,7 +149,9 @@ export function NotesManager({
         // The note row was never created, so the freshly uploaded image
         // would otherwise be orphaned in Storage forever.
         if (image_path) {
-          await deleteNoteImage(supabase, image_path).catch(() => {});
+          await deleteNoteImage(supabase, image_path).catch((cleanupErr) =>
+            console.error("Failed to clean up orphaned note image:", cleanupErr),
+          );
         }
         throw err;
       }
@@ -204,7 +206,9 @@ export function NotesManager({
     });
 
     if (oldImagePath && oldImagePath !== newImagePath) {
-      await deleteNoteImage(supabase, oldImagePath).catch(() => {});
+      await deleteNoteImage(supabase, oldImagePath).catch((cleanupErr) =>
+        console.error("Failed to delete old note image:", cleanupErr),
+      );
     }
 
     await setNoteTags(supabase, id, tagIds);
@@ -220,7 +224,9 @@ export function NotesManager({
     const existing = notes.find((n) => n.id === id);
     await deleteNote(supabase, id);
     if (existing?.image_path) {
-      await deleteNoteImage(supabase, existing.image_path).catch(() => {});
+      await deleteNoteImage(supabase, existing.image_path).catch((cleanupErr) =>
+        console.error("Failed to delete note image after deleting note:", cleanupErr),
+      );
     }
     setNotes((prev) => prev.filter((n) => n.id !== id));
     setNoteTagsState((prev) => prev.filter((nt) => nt.note_id !== id));

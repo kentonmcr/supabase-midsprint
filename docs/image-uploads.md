@@ -30,7 +30,8 @@ module-level client. `uploadNoteImage()`, `getNoteImageSignedUrl()`, and
 
 **Old images aren't left orphaned.** Replacing a note's image (upload a
 new one) or removing it deletes the old Storage object; deleting a note
-with an image deletes its Storage object too. These are best-effort
-(`.catch(() => {})`) — a failed cleanup delete doesn't block the actual
-note operation, since a stray orphaned file in Storage is a much smaller
+with an image deletes its Storage object too. These are best-effort —
+a failed cleanup delete is caught and logged with `console.error()`
+rather than thrown, so it doesn't block the actual note operation,
+since a stray orphaned file in Storage is a much smaller
 problem than a broken save/delete flow.
