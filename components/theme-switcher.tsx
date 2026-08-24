@@ -21,11 +21,17 @@ const ThemeSwitcher = () => {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return null;
-  }
-
   const ICON_SIZE = 16;
+
+  if (!mounted) {
+    // Same size/variant as the real button so layout doesn't shift once
+    // next-themes reports the resolved theme after mount.
+    return (
+      <Button variant="ghost" size={"sm"} disabled className="invisible">
+        <Sun size={ICON_SIZE} />
+      </Button>
+    );
+  }
 
   return (
     <DropdownMenu>
