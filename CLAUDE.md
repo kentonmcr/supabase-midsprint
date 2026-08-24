@@ -405,6 +405,19 @@ tag badges, no edit/delete controls, and no broader anon RLS grants on
   keep it consistent for any future sign-in path.
 - **After sign-out, redirect to `/auth/login`.**
   `components/logout-button.tsx` already does this.
+- **Always call `router.refresh()` right after `router.push()` on both the
+  sign-in and sign-out transitions.** `router.push()` is a client-side
+  navigation — Next.js can serve a cached version of the destination route
+  instead of asking the server for fresh data. Bug found by testing: sign
+  out as one user, sign in as a second, and `/protected/notes` briefly
+  showed the *first* user's notes until a manual browser refresh. This
+  was not an RLS/database leak (compare the bug in "Data model" above) —
+  the database was already returning the correct, per-user rows the whole
+  time. The bug was that the browser hadn't asked it to. `router.refresh()`
+  clears the client-side cache for the current route and re-fetches/
+  re-renders the Server Component, so the new session's data is what
+  actually shows up. Fixed in `components/logout-button.tsx` and
+  `components/login-form.tsx`'s `handleLogin`.
 - Email/password and Google OAuth are otherwise indistinguishable once
   signed in — same session, same `auth.uid()`, no separate code paths
   anywhere else in the app. Google requires a Client ID/Secret configured
