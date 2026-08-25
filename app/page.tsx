@@ -25,7 +25,7 @@ export default function Home() {
               <EnvVarWarning />
             ) : (
               <Suspense>
-                <AuthButton />
+                <AuthButton showNotesLink />
               </Suspense>
             )}
           </div>
