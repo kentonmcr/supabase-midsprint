@@ -47,8 +47,15 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
+  if (request.nextUrl.pathname === "/") {
+    // This app has no public landing page — / always sends you straight
+    // to where you actually want to be, based on whether you're signed in.
+    const url = request.nextUrl.clone();
+    url.pathname = user ? "/protected/notes" : "/auth/login";
+    return NextResponse.redirect(url);
+  }
+
   if (
-    request.nextUrl.pathname !== "/" &&
     !user &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     request.nextUrl.pathname !== "/shared" &&
