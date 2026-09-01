@@ -1,6 +1,5 @@
 export interface Note {
   id: number;
-  user_id: string;
   title: string;
   body: string;
   collection_id: number | null;
@@ -11,7 +10,6 @@ export interface Note {
 
 export interface Collection {
   id: number;
-  user_id: string;
   name: string;
   share_token: string | null;
   created_at: string;
@@ -19,7 +17,6 @@ export interface Collection {
 
 export interface Tag {
   id: number;
-  user_id: string;
   name: string;
   created_at: string;
 }

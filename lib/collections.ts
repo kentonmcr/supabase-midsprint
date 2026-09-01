@@ -7,12 +7,16 @@ import type { Collection } from "@/lib/types";
  * browser) rather than this module creating its own.
  */
 
+// Explicit column list rather than select("*") — user_id is never read
+// anywhere in the app, so there's no reason to ship it to the client.
+const COLLECTION_COLUMNS = "id, name, share_token, created_at";
+
 export async function listCollections(
   supabase: SupabaseClient,
 ): Promise<Collection[]> {
   const { data, error } = await supabase
     .from("collections")
-    .select("*")
+    .select(COLLECTION_COLUMNS)
     .order("name", { ascending: true });
 
   if (error) throw error;
@@ -26,7 +30,7 @@ export async function createCollection(
   const { data, error } = await supabase
     .from("collections")
     .insert(collection)
-    .select()
+    .select(COLLECTION_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -42,7 +46,7 @@ export async function renameCollection(
     .from("collections")
     .update({ name })
     .eq("id", id)
-    .select()
+    .select(COLLECTION_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -66,7 +70,7 @@ async function setCollectionShareToken(
     .from("collections")
     .update({ share_token: shareToken })
     .eq("id", id)
-    .select()
+    .select(COLLECTION_COLUMNS)
     .single();
 
   if (error) throw error;

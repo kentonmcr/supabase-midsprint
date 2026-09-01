@@ -8,10 +8,17 @@ import type { Note } from "@/lib/types";
  * Components alike.
  */
 
+// Explicit column list rather than select("*") — the client should only
+// ever receive the fields the UI actually renders, not internal columns
+// like user_id (never read anywhere in the app) or the generated
+// search_vector tsvector (used only server-side by searchNoteIds()).
+const NOTE_COLUMNS =
+  "id, title, body, collection_id, image_path, created_at, updated_at";
+
 export async function listNotes(supabase: SupabaseClient): Promise<Note[]> {
   const { data, error } = await supabase
     .from("notes")
-    .select("*")
+    .select(NOTE_COLUMNS)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -30,7 +37,7 @@ export async function createNote(
   const { data, error } = await supabase
     .from("notes")
     .insert(note)
-    .select()
+    .select(NOTE_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -51,7 +58,7 @@ export async function updateNote(
     .from("notes")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .select()
+    .select(NOTE_COLUMNS)
     .single();
 
   if (error) throw error;

@@ -6,10 +6,14 @@ import type { NoteTag, Tag } from "@/lib/types";
  * here, mirroring lib/notes.ts and lib/collections.ts.
  */
 
+// Explicit column list rather than select("*") — user_id is never read
+// anywhere in the app, so there's no reason to ship it to the client.
+const TAG_COLUMNS = "id, name, created_at";
+
 export async function listTags(supabase: SupabaseClient): Promise<Tag[]> {
   const { data, error } = await supabase
     .from("tags")
-    .select("*")
+    .select(TAG_COLUMNS)
     .order("name", { ascending: true });
 
   if (error) throw error;
@@ -23,7 +27,7 @@ export async function createTag(
   const { data, error } = await supabase
     .from("tags")
     .insert(tag)
-    .select()
+    .select(TAG_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -39,7 +43,7 @@ export async function renameTag(
     .from("tags")
     .update({ name })
     .eq("id", id)
-    .select()
+    .select(TAG_COLUMNS)
     .single();
 
   if (error) throw error;
