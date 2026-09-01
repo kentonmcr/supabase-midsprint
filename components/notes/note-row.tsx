@@ -28,6 +28,7 @@ import { NO_COLLECTION, toggleId } from "@/components/notes/note-form-utils";
 
 export function NoteRow({
   note,
+  userId,
   collections,
   tags,
   noteTagIds,
@@ -35,6 +36,7 @@ export function NoteRow({
   onDelete,
 }: {
   note: Note;
+  userId: string | null;
   collections: Collection[];
   tags: Tag[];
   noteTagIds: number[];
@@ -163,9 +165,9 @@ export function NoteRow({
           )}
           <div className="grid gap-2">
             <Label htmlFor={`note-${note.id}-image`}>Image</Label>
-            {note.image_path && !removeImage && !imageFile && (
+            {note.image_path && userId && !removeImage && !imageFile && (
               <div className="flex items-center gap-2">
-                <NoteImage path={note.image_path} />
+                <NoteImage userId={userId} path={note.image_path} />
                 <Button
                   type="button"
                   size="sm"
@@ -220,7 +222,9 @@ export function NoteRow({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="whitespace-pre-wrap text-sm">{note.body}</p>
-        {note.image_path && <NoteImage path={note.image_path} />}
+        {note.image_path && userId && (
+          <NoteImage userId={userId} path={note.image_path} />
+        )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex gap-2">
           <Button

@@ -47,6 +47,7 @@ export async function createNote(
 export async function updateNote(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
   updates: {
     title: string;
     body: string;
@@ -58,6 +59,7 @@ export async function updateNote(
     .from("notes")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("user_id", userId)
     .select(NOTE_COLUMNS)
     .single();
 
@@ -68,8 +70,13 @@ export async function updateNote(
 export async function deleteNote(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
 ): Promise<void> {
-  const { error } = await supabase.from("notes").delete().eq("id", id);
+  const { error } = await supabase
+    .from("notes")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw error;
 }
 

@@ -40,12 +40,14 @@ export async function createCollection(
 export async function renameCollection(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
   name: string,
 ): Promise<Collection> {
   const { data, error } = await supabase
     .from("collections")
     .update({ name })
     .eq("id", id)
+    .eq("user_id", userId)
     .select(COLLECTION_COLUMNS)
     .single();
 
@@ -56,20 +58,27 @@ export async function renameCollection(
 export async function deleteCollection(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
 ): Promise<void> {
-  const { error } = await supabase.from("collections").delete().eq("id", id);
+  const { error } = await supabase
+    .from("collections")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw error;
 }
 
 async function setCollectionShareToken(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
   shareToken: string | null,
 ): Promise<Collection> {
   const { data, error } = await supabase
     .from("collections")
     .update({ share_token: shareToken })
     .eq("id", id)
+    .eq("user_id", userId)
     .select(COLLECTION_COLUMNS)
     .single();
 
@@ -80,15 +89,17 @@ async function setCollectionShareToken(
 export function shareCollection(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
 ): Promise<Collection> {
-  return setCollectionShareToken(supabase, id, crypto.randomUUID());
+  return setCollectionShareToken(supabase, id, userId, crypto.randomUUID());
 }
 
 export function unshareCollection(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
 ): Promise<Collection> {
-  return setCollectionShareToken(supabase, id, null);
+  return setCollectionShareToken(supabase, id, userId, null);
 }
 
 const UUID_PATTERN =

@@ -72,6 +72,33 @@ export function NotesManager({
   const [tags, setTags] = useState<Tag[]>(initialTags);
   const [noteTags, setNoteTagsState] = useState<NoteTag[]>(initialNoteTags);
 
+  // Fetched once on mount and cached — every mutation below needs it to
+  // scope its own write, and NoteImage needs it to fetch signed URLs (see
+  // lib/storage.ts's assertOwnedPath and the user_id checks added to
+  // lib/notes.ts, lib/collections.ts, lib/tags.ts).
+  const [userId, setUserId] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    getCurrentUserId(supabase)
+      .then((id) => {
+        userIdRef.current = id;
+        setUserId(id);
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)));
+  }, []);
+
+  const getCachedUserId = async (
+    supabase: ReturnType<typeof createClient>,
+  ): Promise<string> => {
+    if (!userIdRef.current) {
+      userIdRef.current = await getCurrentUserId(supabase);
+      setUserId(userIdRef.current);
+    }
+    return userIdRef.current;
+  };
+
   const [selectedCollectionId, setSelectedCollectionId] = useState<
     number | null
   >(null);
@@ -128,9 +155,10 @@ export function NotesManager({
     setError(null);
 
     try {
+      const userId = await getCachedUserId(supabase);
+
       let image_path: string | null = null;
       if (newNoteImageFile) {
-        const userId = await getCurrentUserId(supabase);
         image_path = await uploadNoteImage(supabase, userId, newNoteImageFile);
       }
 
@@ -149,8 +177,12 @@ export function NotesManager({
         // The note row was never created, so the freshly uploaded image
         // would otherwise be orphaned in Storage forever.
         if (image_path) {
-          await deleteNoteImage(supabase, image_path).catch((cleanupErr) =>
-            console.error("Failed to clean up orphaned note image:", cleanupErr),
+          await deleteNoteImage(supabase, userId, image_path).catch(
+            (cleanupErr) =>
+              console.error(
+                "Failed to clean up orphaned note image:",
+                cleanupErr,
+              ),
           );
         }
         throw err;
@@ -185,13 +217,13 @@ export function NotesManager({
     },
   ) => {
     const supabase = createClient();
+    const userId = await getCachedUserId(supabase);
     const { tagIds, imageFile, removeImage, ...noteUpdates } = updates;
     const existing = notes.find((n) => n.id === id);
     const oldImagePath = existing?.image_path ?? null;
     let newImagePath = oldImagePath;
 
     if (imageFile) {
-      const userId = await getCurrentUserId(supabase);
       newImagePath = await uploadNoteImage(supabase, userId, imageFile);
     } else if (removeImage) {
       newImagePath = null;
@@ -200,14 +232,15 @@ export function NotesManager({
     // Update the DB row (the source of truth) before touching the old
     // Storage object — if this throws, the note still correctly points at
     // whatever image actually still exists, nothing is left broken.
-    const updated = await updateNote(supabase, id, {
+    const updated = await updateNote(supabase, id, userId, {
       ...noteUpdates,
       image_path: newImagePath,
     });
 
     if (oldImagePath && oldImagePath !== newImagePath) {
-      await deleteNoteImage(supabase, oldImagePath).catch((cleanupErr) =>
-        console.error("Failed to delete old note image:", cleanupErr),
+      await deleteNoteImage(supabase, userId, oldImagePath).catch(
+        (cleanupErr) =>
+          console.error("Failed to delete old note image:", cleanupErr),
       );
     }
 
@@ -221,11 +254,16 @@ export function NotesManager({
 
   const handleDeleteNote = async (id: number) => {
     const supabase = createClient();
+    const userId = await getCachedUserId(supabase);
     const existing = notes.find((n) => n.id === id);
-    await deleteNote(supabase, id);
+    await deleteNote(supabase, id, userId);
     if (existing?.image_path) {
-      await deleteNoteImage(supabase, existing.image_path).catch((cleanupErr) =>
-        console.error("Failed to delete note image after deleting note:", cleanupErr),
+      await deleteNoteImage(supabase, userId, existing.image_path).catch(
+        (cleanupErr) =>
+          console.error(
+            "Failed to delete note image after deleting note:",
+            cleanupErr,
+          ),
       );
     }
     setNotes((prev) => prev.filter((n) => n.id !== id));
@@ -240,7 +278,8 @@ export function NotesManager({
 
   const handleRenameCollection = async (id: number, name: string) => {
     const supabase = createClient();
-    const updated = await renameCollection(supabase, id, name);
+    const userId = await getCachedUserId(supabase);
+    const updated = await renameCollection(supabase, id, userId, name);
     setCollections((prev) =>
       prev.map((c) => (c.id === id ? updated : c)).sort(byName),
     );
@@ -248,7 +287,8 @@ export function NotesManager({
 
   const handleDeleteCollection = async (id: number) => {
     const supabase = createClient();
-    await deleteCollection(supabase, id);
+    const userId = await getCachedUserId(supabase);
+    await deleteCollection(supabase, id, userId);
     setCollections((prev) => prev.filter((c) => c.id !== id));
     setNotes((prev) =>
       prev.map((n) =>
@@ -260,13 +300,15 @@ export function NotesManager({
 
   const handleShareCollection = async (id: number) => {
     const supabase = createClient();
-    const updated = await shareCollection(supabase, id);
+    const userId = await getCachedUserId(supabase);
+    const updated = await shareCollection(supabase, id, userId);
     setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
   };
 
   const handleUnshareCollection = async (id: number) => {
     const supabase = createClient();
-    const updated = await unshareCollection(supabase, id);
+    const userId = await getCachedUserId(supabase);
+    const updated = await unshareCollection(supabase, id, userId);
     setCollections((prev) => prev.map((c) => (c.id === id ? updated : c)));
   };
 
@@ -278,13 +320,15 @@ export function NotesManager({
 
   const handleRenameTag = async (id: number, name: string) => {
     const supabase = createClient();
-    const updated = await renameTag(supabase, id, name);
+    const userId = await getCachedUserId(supabase);
+    const updated = await renameTag(supabase, id, userId, name);
     setTags((prev) => prev.map((t) => (t.id === id ? updated : t)).sort(byName));
   };
 
   const handleDeleteTag = async (id: number) => {
     const supabase = createClient();
-    await deleteTag(supabase, id);
+    const userId = await getCachedUserId(supabase);
+    await deleteTag(supabase, id, userId);
     setTags((prev) => prev.filter((t) => t.id !== id));
     setNoteTagsState((prev) => prev.filter((nt) => nt.tag_id !== id));
     setSelectedTagId((prev) => (prev === id ? null : prev));
@@ -439,6 +483,7 @@ export function NotesManager({
             <NoteRow
               key={note.id}
               note={note}
+              userId={userId}
               collections={collections}
               tags={tags}
               noteTagIds={getTagIdsForNote(note.id)}

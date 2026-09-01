@@ -15,8 +15,18 @@ const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"
  * reachable via a signed URL (getNoteImageSignedUrl), never a public one.
  * Storage RLS policies restrict each user to their own folder
  * (`{user_id}/...`), so uploads/reads/deletes are already scoped by
- * ownership at the database level; this module doesn't re-check it.
+ * ownership at the database level. assertOwnedPath() below is an
+ * app-level backstop on top of that — same reasoning as the user_id
+ * checks added to lib/notes.ts, lib/collections.ts, and lib/tags.ts's
+ * mutation functions after the RLS-policy-drift incidents documented in
+ * docs/data-model.md.
  */
+
+function assertOwnedPath(userId: string, path: string): void {
+  if (!path.startsWith(`${userId}/`)) {
+    throw new Error("Not authorized to access this image.");
+  }
+}
 
 export async function uploadNoteImage(
   supabase: SupabaseClient,
@@ -42,8 +52,11 @@ export async function uploadNoteImage(
 
 export async function getNoteImageSignedUrl(
   supabase: SupabaseClient,
+  userId: string,
   path: string,
 ): Promise<string> {
+  assertOwnedPath(userId, path);
+
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(path, 3600);
@@ -54,8 +67,11 @@ export async function getNoteImageSignedUrl(
 
 export async function deleteNoteImage(
   supabase: SupabaseClient,
+  userId: string,
   path: string,
 ): Promise<void> {
+  assertOwnedPath(userId, path);
+
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   if (error) throw error;
 }

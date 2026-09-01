@@ -62,6 +62,24 @@ add `.eq("user_id", ...)` filters to reads "to be safe" — RLS already
 guarantees it at the database level, and a redundant client-side filter
 just adds noise.
 
+**Mutations (`update`/`delete`) are the one place that *do* carry an
+explicit `.eq("user_id", userId)`**, in `updateNote()`/`deleteNote()`
+(`lib/notes.ts`), `renameCollection()`/`deleteCollection()`/
+`setCollectionShareToken()` (`lib/collections.ts`), and
+`renameTag()`/`deleteTag()` (`lib/tags.ts`) — plus the matching
+`assertOwnedPath()` check in `lib/storage.ts`'s
+`getNoteImageSignedUrl()`/`deleteNoteImage()`. This isn't a contradiction
+of the "don't filter reads" rule above — reads have nothing to protect
+beyond exposure of rows that already aren't the caller's, so a redundant
+filter there is genuinely just noise. A write is a different risk class:
+if a stray permissive policy is ever active again (this has already
+happened once — see the `drop policy` incident below), an unfiltered
+`.update()`/`.delete()` would silently corrupt or delete another user's
+row instead of just failing to return it. Added as a deliberate
+defense-in-depth backstop after a `nextjs-security-scanner` pass flagged
+that these mutations had zero application-level check, relying entirely
+on RLS with no second layer.
+
 **Every foreign key column has an explicit index** — Postgres indexes
 primary keys automatically but never foreign keys, so this doesn't happen
 for free (flagged by the `supabase-postgres-best-practices` skill's

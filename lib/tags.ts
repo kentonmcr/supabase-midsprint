@@ -37,12 +37,14 @@ export async function createTag(
 export async function renameTag(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
   name: string,
 ): Promise<Tag> {
   const { data, error } = await supabase
     .from("tags")
     .update({ name })
     .eq("id", id)
+    .eq("user_id", userId)
     .select(TAG_COLUMNS)
     .single();
 
@@ -53,8 +55,13 @@ export async function renameTag(
 export async function deleteTag(
   supabase: SupabaseClient,
   id: number,
+  userId: string,
 ): Promise<void> {
-  const { error } = await supabase.from("tags").delete().eq("id", id);
+  const { error } = await supabase
+    .from("tags")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw error;
 }
 
