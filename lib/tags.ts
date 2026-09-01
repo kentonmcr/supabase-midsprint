@@ -82,13 +82,15 @@ export async function listNoteTags(
  */
 export async function setNoteTags(
   supabase: SupabaseClient,
+  userId: string,
   noteId: number,
   tagIds: number[],
 ): Promise<void> {
   const { error: deleteError } = await supabase
     .from("note_tags")
     .delete()
-    .eq("note_id", noteId);
+    .eq("note_id", noteId)
+    .eq("user_id", userId);
   if (deleteError) throw deleteError;
 
   if (tagIds.length === 0) return;

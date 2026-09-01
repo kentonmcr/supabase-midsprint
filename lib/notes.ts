@@ -25,8 +25,32 @@ export async function listNotes(supabase: SupabaseClient): Promise<Note[]> {
   return data ?? [];
 }
 
+// Neither app code nor RLS previously verified that a note's collection_id
+// actually belonged to the same user — RLS on `notes` only checks
+// `user_id = auth.uid()`, nothing about collection_id. That let a user
+// point their own note at another user's collection id; since
+// get_shared_collection_notes() joins purely on collection_id (see its
+// migration), this let a note get injected into someone else's already-
+// shared public collection page. This check closes that at the app level;
+// the SQL function is also tightened to check it independently.
+async function assertOwnedCollection(
+  supabase: SupabaseClient,
+  userId: string,
+  collectionId: number,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("collections")
+    .select("id")
+    .eq("id", collectionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Collection not found.");
+}
+
 export async function createNote(
   supabase: SupabaseClient,
+  userId: string,
   note: {
     title: string;
     body: string;
@@ -34,6 +58,10 @@ export async function createNote(
     image_path: string | null;
   },
 ): Promise<Note> {
+  if (note.collection_id !== null) {
+    await assertOwnedCollection(supabase, userId, note.collection_id);
+  }
+
   const { data, error } = await supabase
     .from("notes")
     .insert(note)
@@ -55,6 +83,10 @@ export async function updateNote(
     image_path: string | null;
   },
 ): Promise<Note> {
+  if (updates.collection_id !== null) {
+    await assertOwnedCollection(supabase, userId, updates.collection_id);
+  }
+
   const { data, error } = await supabase
     .from("notes")
     .update({ ...updates, updated_at: new Date().toISOString() })

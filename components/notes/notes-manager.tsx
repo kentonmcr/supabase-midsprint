@@ -164,7 +164,7 @@ export function NotesManager({
 
       let note;
       try {
-        note = await createNote(supabase, {
+        note = await createNote(supabase, userId, {
           title,
           body,
           collection_id:
@@ -187,7 +187,7 @@ export function NotesManager({
         }
         throw err;
       }
-      await setNoteTags(supabase, note.id, newNoteTagIds);
+      await setNoteTags(supabase, userId, note.id, newNoteTagIds);
       setNotes((prev) => [note, ...prev]);
       setNoteTagsState((prev) => [
         ...prev,
@@ -244,7 +244,7 @@ export function NotesManager({
       );
     }
 
-    await setNoteTags(supabase, id, tagIds);
+    await setNoteTags(supabase, userId, id, tagIds);
     setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
     setNoteTagsState((prev) => [
       ...prev.filter((nt) => nt.note_id !== id),
