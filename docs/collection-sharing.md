@@ -7,6 +7,12 @@ which generates the token client-side with `crypto.randomUUID()`) makes
 the collection and its notes visible at `/shared/[token]` to anyone with
 the link, signed in or not. Unsharing sets it back to `null`.
 
+The live database once drifted from this design — the column's actual
+default was `gen_random_uuid()`, not `null`, so new collections were
+public from creation until this was caught and fixed. See the
+"`collections.share_token`'s live default drifted" entry in
+`docs/data-model.md` for the incident.
+
 This is unaffected by `collections`/`notes` now having `user_id` — a user
 can only ever share/unshare their *own* collection (RLS still governs the
 authenticated Share/Unshare actions), and the public read path below

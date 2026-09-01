@@ -176,6 +176,29 @@ table's actual policy list in the dashboard and confirm only the
 intended policy remains — don't assume the drop worked just because the
 SQL ran without error.**
 
+**`collections.share_token`'s live default drifted from "no default" to
+`gen_random_uuid()` — new collections were public from creation.** This
+doc and `docs/collection-sharing.md` always documented `share_token` as
+nullable with no default (`null` = not shared), but the live column had
+somehow picked up `default gen_random_uuid()` — most likely from a "Set
+default value" prompt when the column was added via the Table Editor.
+The docs were right; the database wasn't. `createCollection()` in
+`lib/collections.ts` only ever inserts `{ name }`, relying on the column
+defaulting to `null` — so every new collection actually got a working
+public share token the instant it was created, with no one ever clicking
+"Share." Caught on 2026-08-27 by a live-DB pass of the
+`supabase-security-scanner` subagent (`supabase db advisors` plus a
+direct `information_schema.columns` query) — not by re-reading this doc,
+since the doc never claimed the bad default existed. One real collection
+had already picked up a live token by the time this was found. Fixed
+live with `alter table collections alter column share_token drop
+default;`, and that collection's token was manually nulled. **Lesson:
+this is the third hand-authored-schema drift incident in this project
+(see the `drop policy` and column-retyping entries above) — periodically
+verify live schema against these docs with a real query (`supabase db
+advisors`, `information_schema`), since a correct-looking doc doesn't
+guarantee the database matches it.**
+
 RLS is enabled on every table, so both anonymous requests (no session)
 *and* other authenticated users' requests are rejected for rows they
 don't own. The only deliberate exception is the collection-sharing
