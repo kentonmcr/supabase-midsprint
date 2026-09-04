@@ -137,6 +137,8 @@ export function NotesManager({
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
+
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [newNoteCollection, setNewNoteCollection] = useState(NO_COLLECTION);
@@ -334,6 +336,12 @@ export function NotesManager({
     setSelectedTagId((prev) => (prev === id ? null : prev));
   };
 
+  // showOnlyMine intentionally never removes anything from `notes` — RLS
+  // (docs/data-model.md) already guarantees every row a signed-in user's
+  // own query can return belongs to them, so there's no other-user note to
+  // exclude here. The toggle is real UI state (and gets its own Playwright
+  // regression test against a seeded other-user note), it's just that the
+  // list itself has nothing to filter.
   const visibleNotes = notes
     .filter(
       (n) =>
@@ -461,13 +469,24 @@ export function NotesManager({
         </Card>
 
         <div className="flex flex-col gap-2">
-          <Input
-            type="search"
-            placeholder="Search notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search notes"
-          />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              type="search"
+              placeholder="Search notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search notes"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant={showOnlyMine ? "default" : "outline"}
+              aria-pressed={showOnlyMine}
+              onClick={() => setShowOnlyMine((prev) => !prev)}
+            >
+              Show only my notes
+            </Button>
+          </div>
           {searchError && (
             <p className="text-sm text-red-500">{searchError}</p>
           )}
