@@ -168,11 +168,36 @@ referenced here so they load as needed rather than bloating this file:
   first; if one exists that you didn't start, leave it alone and ask
   before touching it.
 
+## Testing
+
+- Playwright (`@playwright/test`, `tests/`) covers e2e testing —
+  Chromium only (`playwright.config.ts`'s `projects` array has a single
+  `chromium` entry). This machine runs macOS 13 arm64, which current
+  Playwright no longer ships a downloadable Chromium build for, so that
+  project uses `channel: 'chrome'` (the system-installed Google Chrome)
+  instead of Playwright's bundled binary — revisit if this ever moves to
+  a newer macOS or CI.
+- `tests/auth.setup.ts` is a dependency project that logs in once via the
+  real login form (`PLAYWRIGHT_TEST_EMAIL`/`PLAYWRIGHT_TEST_PASSWORD` in
+  `.env.local` — a confirmed Supabase user, not committed) and saves the
+  session to `playwright/.auth/user.json` (gitignored); the `chromium`
+  project depends on it and reuses that session, so individual test files
+  don't each need their own login flow.
+- **Use the Playwright CLI (`npm run test:e2e` / `npx playwright test`)
+  for one-off browser tasks — a fixed, known sequence of steps written in
+  advance, like an e2e happy-path test. Use the Playwright MCP tools
+  (`mcp__playwright__browser_*`) when the agent needs to repeat actions or
+  react to what's actually on screen each time** — exploratory browsing,
+  iterating on a selector that isn't confirmed yet, or any flow where the
+  next action depends on inspecting current page state rather than a
+  script decided upfront.
+
 ## Commands
 
 - `npm run dev` — dev server
 - `npm run build` — production build
 - `npm run lint` — ESLint
+- `npm run test:e2e` — Playwright e2e tests (Chromium only)
 
 <!-- BEGIN:nextjs-agent-rules -->
 

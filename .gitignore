@@ -44,3 +44,15 @@ supabase/.temp/
 *.tsbuildinfo
 next-env.d.ts
 .env*
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+# Playwright MCP server output (page snapshots, console logs)
+.playwright-mcp/
